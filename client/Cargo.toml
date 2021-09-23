@@ -1,10 +1,16 @@
 [package]
-name = "tcp_chat"
+name = "client"
 version = "0.1.0"
 edition = "2018"
+
+[lib]
+name = "client"
+
+[[bin]]
+name = "client"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-server = { path = "server" }
-client = { path = "client" }
+shared = { path = "../shared" }
+serde_json = "1.0"

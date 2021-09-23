@@ -3,14 +3,6 @@
 version = 3
 
 [[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "shared",
-]
-
-[[package]]
 name = "itoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -52,12 +44,4 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "serde_json",
-]
-
-[[package]]
-name = "tcp_chat"
-version = "0.1.0"
-dependencies = [
- "client",
- "server",
 ]

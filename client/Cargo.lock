@@ -40,24 +40,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "shared",
-]
-
-[[package]]
 name = "shared"
 version = "0.1.0"
 dependencies = [
  "serde_json",
-]
-
-[[package]]
-name = "tcp_chat"
-version = "0.1.0"
-dependencies = [
- "client",
- "server",
 ]
