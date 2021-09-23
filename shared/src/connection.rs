@@ -1,18 +1,18 @@
 use crate::Result;
 use crate::capped_reader::IntoCappedReader;
-use crate::communication::json::{JsonReader, JsonWriter};
+use crate::communication::bson::{BsonReader, BsonWriter};
 
 use std::net::TcpStream;
 
 pub struct Connection {
-    pub writer: JsonWriter,
-    pub reader: JsonReader<TcpStream>,
+    pub writer: BsonWriter,
+    pub reader: BsonReader<TcpStream>,
 }
 
 pub fn prepare(stream: TcpStream) -> Result<Connection> {
     let connection = Connection {
-        writer: JsonWriter::new(stream.try_clone()?),
-        reader: JsonReader::new(stream.capped()),
+        writer: BsonWriter::new(stream.try_clone()?),
+        reader: BsonReader::new(stream.capped()),
     };
 
     Ok(connection)

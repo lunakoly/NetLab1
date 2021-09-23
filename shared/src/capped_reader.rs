@@ -4,7 +4,7 @@ pub trait CappedRead: Read {
     fn clear(&mut self);
 }
 
-const CAPPED_READER_CAPACITY: usize = 100;
+pub const CAPPED_READER_CAPACITY: usize = 100;
 
 pub struct CappedReader<R> {
     stream: R,

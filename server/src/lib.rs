@@ -2,7 +2,7 @@ use std::net::TcpListener;
 use std::io::prelude::Write;
 
 use shared::{Result, Error, with_error_report};
-use shared::communication::json::visualize;
+use shared::communication::bson::visualize;
 use shared::connection::Connection;
 
 use shared::communication::{
@@ -19,7 +19,7 @@ use dictionary::{
     NAME,
 };
 
-use serde_json::json;
+use bson::doc;
 
 pub fn handle_error(
     connection: &mut Connection,
@@ -38,11 +38,11 @@ pub fn handle_input(connection: &mut Connection) -> Result<()> {
         Ok(value) => {
             visualize(&value, connection)?;
 
-            let response = json!({
+            let response = doc! {
                 TYPE: MESSAGE,
                 NAME: "Server", 
                 TEXT: "Hi, got it."
-            });
+            };
 
             connection.writer.write(&response)?;
 

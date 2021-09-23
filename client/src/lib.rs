@@ -3,7 +3,7 @@ mod commands;
 
 use shared::{Result, Error, with_error_report};
 use shared::connection::Connection;
-use shared::communication::json::visualize;
+use shared::communication::bson::visualize;
 
 use shared::communication::{
     ReadMessage, 
@@ -25,7 +25,7 @@ use std::net::TcpStream;
 
 use std::io::{BufRead};
 
-use serde_json::json;
+use bson::doc;
 
 pub fn handle_error(error: &Error) {
     println!("Error > {}", error);
@@ -58,11 +58,11 @@ pub fn handle_connection() -> Result<()> {
     loop {
         match commands::parse(&mut reader) {
             commands::Command::Message { text } => {
-                let message = json!({
+                let message = doc! {
                     TYPE: MESSAGE,
                     NAME: "Nick",
                     TEXT: text
-                });
+                };
             
                 connection.writer.write(&message)?;
                 handle_input(&mut connection)?;

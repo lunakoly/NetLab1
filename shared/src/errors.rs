@@ -4,6 +4,8 @@ pub enum ErrorKind {
     MessageSizeExceeded,
     Io { source: std::io::Error },
     ParsingJson { source: serde_json::Error },
+    DeserializingBson { source: bson::de::Error },
+    SerializingBson { source: bson::ser::Error },
     MalformedMessage { message: String },
 }
 
@@ -21,6 +23,12 @@ impl std::fmt::Display for ErrorKind {
             }
             ErrorKind::ParsingJson { source } => {
                 write!(formatter, "Parsing JSON > {}", source)
+            },
+            ErrorKind::DeserializingBson { source } => {
+                write!(formatter, "Deserializing BSON > {}", source)
+            },
+            ErrorKind::SerializingBson { source } => {
+                write!(formatter, "Serializing BSON > {}", source)
             },
             ErrorKind::MalformedMessage { message } => {
                 write!(formatter, "Received a message with incorrect format > {}", message)
@@ -80,6 +88,56 @@ impl From<ErrorKind> for std::io::Error {
             std::io::ErrorKind::Other,
             Error { kind: kind }
         )
+    }
+}
+
+impl From<bson::de::Error> for Error {
+    fn from(source: bson::de::Error) -> Self {
+        // Unwrap embedded io::Error
+        match &source {
+            bson::de::Error::Io(io_error) => match io_error.kind() {
+                std::io::ErrorKind::InvalidData => Error {
+                    kind: ErrorKind::Io {
+                        source: std::io::ErrorKind::InvalidData.into()
+                    }
+                },
+                _ => Error {
+                    kind: ErrorKind::DeserializingBson {
+                        source: source,
+                    }
+                }
+            }
+            _ => Error {
+                kind: ErrorKind::DeserializingBson {
+                    source: source,
+                }
+            }
+        }
+    }
+}
+
+impl From<bson::ser::Error> for Error {
+    fn from(source: bson::ser::Error) -> Self {
+        // Unwrap embedded io::Error
+        match &source {
+            bson::ser::Error::Io(io_error) => match io_error.kind() {
+                std::io::ErrorKind::InvalidData => Error {
+                    kind: ErrorKind::Io {
+                        source: std::io::ErrorKind::InvalidData.into()
+                    }
+                },
+                _ => Error {
+                    kind: ErrorKind::SerializingBson {
+                        source: source,
+                    }
+                }
+            }
+            _ => Error {
+                kind: ErrorKind::SerializingBson {
+                    source: source,
+                }
+            }
+        }
     }
 }
 

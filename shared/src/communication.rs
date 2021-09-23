@@ -1,4 +1,5 @@
 pub mod json;
+pub mod bson;
 
 use crate::{Result, Error, ErrorKind};
 
