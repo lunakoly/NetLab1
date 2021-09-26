@@ -161,7 +161,7 @@ impl Visualize for ClientMessage {
     fn visualize(&self, connection: &mut dyn Connection) -> Result<()> {
         match self {
             ClientMessage::Text { text } => {
-                let address = connection.get_raw_tcp_stream().local_addr()?.to_string();
+                let address = connection.get_raw_tcp_stream().peer_addr()?.to_string();
                 println!("[{}] {}", address, text);
             }
         };
