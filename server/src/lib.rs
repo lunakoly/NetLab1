@@ -6,8 +6,8 @@ use shared::communication::bson::visualize;
 use shared::connection::Connection;
 
 use shared::communication::{
-    ReadMessage, 
-    WriteMessage, 
+    ReadMessage,
+    WriteMessage,
     try_explain_common_error,
     dictionary,
 };
@@ -24,23 +24,26 @@ use bson::doc;
 pub fn handle_error(
     connection: &mut Connection,
     error: &Error,
-) {
+) -> Result<()> {
+    println!("Error > {}", error);
+
     let response = "HTTP/1.1 404 OK\r\n\r\n";
 
-    connection.writer.stream.write(response.as_bytes()).unwrap();
-    connection.writer.stream.flush().unwrap();
+    connection.writer.stream.write(response.as_bytes())?;
+    connection.writer.stream.flush()?;
 
-    println!("Error > {}", error);
+    Ok(())
 }
 
 pub fn handle_input(connection: &mut Connection) -> Result<()> {
     match connection.reader.read() {
         Ok(value) => {
+            println!("Got {}", &value);
             visualize(&value, connection)?;
 
             let response = doc! {
                 TYPE: MESSAGE,
-                NAME: "Server", 
+                NAME: "Server",
                 TEXT: "Hi, got it."
             };
 
@@ -50,7 +53,7 @@ pub fn handle_input(connection: &mut Connection) -> Result<()> {
         }
         Err(error) => {
             if try_explain_common_error(&error) {
-                handle_error(connection, &error);
+                handle_error(connection, &error)?;
             }
 
             Err(error)

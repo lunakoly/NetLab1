@@ -4,6 +4,7 @@ use crate::chars_reader::CharsReader;
 
 pub enum Command {
     Nothing,
+    End,
     Message { text: String },
 }
 
@@ -31,15 +32,21 @@ fn parse_message<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
         }
     }
 
-    Command::Message {
-        text: line,
+    if line.is_empty() {
+        Command::Nothing
+    } else {
+        Command::Message {
+            text: line,
+        }
     }
 }
 
 pub fn parse<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     if input.peek() == Some(&'/') {
         parse_command(input)
-    } else {
+    } else if let Some(_) = input.peek() {
         parse_message(input)
+    } else {
+        Command::End
     }
 }

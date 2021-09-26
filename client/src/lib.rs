@@ -6,8 +6,8 @@ use shared::connection::Connection;
 use shared::communication::bson::visualize;
 
 use shared::communication::{
-    ReadMessage, 
-    WriteMessage, 
+    ReadMessage,
+    WriteMessage,
     try_explain_common_error,
     dictionary,
 };
@@ -63,13 +63,14 @@ pub fn handle_connection() -> Result<()> {
                     NAME: "Nick",
                     TEXT: text
                 };
-            
+
                 connection.writer.write(&message)?;
                 handle_input(&mut connection)?;
             }
-            _ => {
+            commands::Command::End => {
                 break
             }
+            _ => {}
         }
     }
 
