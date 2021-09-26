@@ -12,14 +12,6 @@ pub trait WriteMessage<M> {
     fn write(&mut self, message: M) -> Result<()>;
 }
 
-pub mod dictionary {
-    pub const TYPE: &'static str = "type";
-    pub const MESSAGE: &'static str = "message";
-    pub const TEXT: &'static str = "text";
-    pub const NAME: &'static str = "name";
-    pub const PAYLOAD: &'static str = "payload";
-}
-
 pub fn try_explain_common_error(error: &Error) -> bool {
     let mut already_explained = false;
 
