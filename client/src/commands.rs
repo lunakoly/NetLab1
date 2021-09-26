@@ -22,7 +22,9 @@ fn parse_message<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     let mut line = String::new();
 
     while let Some(it) = input.next() {
-        if it != '\n' {
+        if it == '\r' {
+            // ignore
+        } else if it != '\n' {
             line.push(it);
         } else {
             break
