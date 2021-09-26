@@ -2,21 +2,17 @@ mod chars_reader;
 mod commands;
 
 use shared::{Result, Error, with_error_report};
-use shared::connection::Connection;
-use shared::communication::bson::visualize;
+
+use shared::communication::xxson::{
+    ClientSideConnection,
+    ClientMessage,
+    Visualize,
+};
 
 use shared::communication::{
     ReadMessage,
     WriteMessage,
     try_explain_common_error,
-    dictionary,
-};
-
-use dictionary::{
-    TYPE,
-    MESSAGE,
-    TEXT,
-    NAME,
 };
 
 use chars_reader::{IntoCharsReader};
@@ -25,16 +21,14 @@ use std::net::TcpStream;
 
 use std::io::{BufRead};
 
-use bson::doc;
-
 pub fn handle_error(error: &Error) {
     println!("Error > {}", error);
 }
 
-pub fn handle_input(connection: &mut Connection) -> Result<()> {
+pub fn handle_input(connection: &mut ClientSideConnection) -> Result<()> {
     match connection.reader.read() {
         Ok(value) => {
-            visualize(&value, connection)?;
+            value.visualize(connection)?;
             Ok(())
         }
         Err(error) => {
@@ -49,7 +43,7 @@ pub fn handle_input(connection: &mut Connection) -> Result<()> {
 
 pub fn handle_connection() -> Result<()> {
     let stream = TcpStream::connect("127.0.0.1:6969")?;
-    let mut connection = shared::connection::prepare(stream)?;
+    let mut connection = ClientSideConnection::new(stream)?;
 
     let stdin = std::io::stdin();
     let lock: &mut dyn BufRead = &mut stdin.lock();
@@ -58,10 +52,8 @@ pub fn handle_connection() -> Result<()> {
     loop {
         match commands::parse(&mut reader) {
             commands::Command::Message { text } => {
-                let message = doc! {
-                    TYPE: MESSAGE,
-                    NAME: "Nick",
-                    TEXT: text
+                let message = ClientMessage::Text {
+                    text: text,
                 };
 
                 connection.writer.write(&message)?;

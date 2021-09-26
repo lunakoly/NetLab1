@@ -1,17 +1,9 @@
 use crate::{ErrorKind, Result};
-use crate::communication::{ReadMessage, WriteMessage, dictionary};
-use crate::connection::Connection;
+use crate::communication::{ReadMessage, WriteMessage};
 
 use crate::capped_reader::{
     CappedReader,
     CappedRead,
-};
-
-use dictionary::{
-    TYPE,
-    MESSAGE,
-    TEXT,
-    NAME,
 };
 
 use std::io::prelude::Write;
@@ -88,27 +80,4 @@ impl WriteMessage<&Document> for BsonWriter {
         self.stream.flush()?;
         Ok(())
     }
-}
-
-pub fn visualize(value: &Document, connection: &Connection) -> Result<()> {
-    if value.get_str(TYPE) == Ok(MESSAGE) {
-        let address = connection.writer.stream.local_addr()?.to_string();
-        let name = value.get_str(NAME).unwrap_or(&address);
-
-        let text = match value.get_str(TEXT) {
-            Ok(it) => it,
-            Err(..) => {
-                let kind = ErrorKind::MalformedMessage {
-                    message: value.to_string(),
-                };
-                return Err(kind.into())
-            },
-        };
-
-        println!("[{}] {}", name, text);
-    } else {
-        println!("Unidentified message > {}", &value);
-    }
-
-    Ok(())
 }

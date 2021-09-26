@@ -1,14 +1,6 @@
 use crate::{ErrorKind, Result};
 use crate::capped_reader::{CappedReader, CappedRead};
-use crate::communication::{ReadMessage, WriteMessage, dictionary};
-use crate::connection::Connection;
-
-use dictionary::{
-    TYPE,
-    MESSAGE,
-    TEXT,
-    NAME,
-};
+use crate::communication::{ReadMessage, WriteMessage};
 
 use std::io::prelude::Write;
 use std::io::Read;
@@ -61,32 +53,9 @@ impl JsonWriter {
 }
 
 impl WriteMessage<&Value> for JsonWriter {
-    fn write(&mut self, message: &Value) -> Result<()> { 
+    fn write(&mut self, message: &Value) -> Result<()> {
         self.stream.write(message.to_string().as_bytes())?;
         self.stream.flush()?;
         Ok(())
     }
-}
-
-pub fn visualize(value: &Value, connection: &Connection) -> Result<()> {
-    if &value[TYPE] == MESSAGE {
-        let address = connection.writer.stream.local_addr()?.to_string();
-        let name = &value[NAME].as_str().unwrap_or(&address);
-
-        let text = match value[TEXT].as_str() {
-            Some(it) => it,
-            None => {
-                let kind = ErrorKind::MalformedMessage {
-                    message: value.to_string(),
-                };
-                return Err(kind.into())
-            },
-        };
-
-        println!("[{}] {}", name, text);
-    } else {
-        println!("Unidentified message > {}", &value);
-    }
-
-    Ok(())
 }

@@ -6,6 +6,7 @@ pub enum ErrorKind {
     ParsingJson { source: serde_json::Error },
     DeserializingBson { source: bson::de::Error },
     SerializingBson { source: bson::ser::Error },
+    ConversionBson { source: bson::document::ValueAccessError },
     MalformedMessage { message: String },
 }
 
@@ -23,13 +24,16 @@ impl std::fmt::Display for ErrorKind {
             }
             ErrorKind::ParsingJson { source } => {
                 write!(formatter, "Parsing JSON > {}", source)
-            },
+            }
             ErrorKind::DeserializingBson { source } => {
                 write!(formatter, "Deserializing BSON > {}", source)
-            },
+            }
             ErrorKind::SerializingBson { source } => {
                 write!(formatter, "Serializing BSON > {}", source)
-            },
+            }
+            ErrorKind::ConversionBson { source } => {
+                write!(formatter, "Conversion BSON > {}", source)
+            }
             ErrorKind::MalformedMessage { message } => {
                 write!(formatter, "Received a message with incorrect format > {}", message)
             }
@@ -136,6 +140,16 @@ impl From<bson::ser::Error> for Error {
                 kind: ErrorKind::SerializingBson {
                     source: source,
                 }
+            }
+        }
+    }
+}
+
+impl From<bson::document::ValueAccessError> for Error {
+    fn from(source: bson::document::ValueAccessError) -> Self {
+        Error {
+            kind: ErrorKind::ConversionBson {
+                source: source,
             }
         }
     }

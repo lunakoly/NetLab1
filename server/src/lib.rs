@@ -1,50 +1,45 @@
 use std::net::TcpListener;
-use std::io::prelude::Write;
+
+use std::io::Write;
 
 use shared::{Result, Error, with_error_report};
-use shared::communication::bson::visualize;
-use shared::connection::Connection;
 
 use shared::communication::{
     ReadMessage,
     WriteMessage,
     try_explain_common_error,
-    dictionary,
 };
 
-use dictionary::{
-    TYPE,
-    MESSAGE,
-    TEXT,
-    NAME,
+use shared::communication::xxson::{
+    ServerSideConnection,
+    ServerMessage,
+    Visualize,
+    Connection,
 };
-
-use bson::doc;
 
 pub fn handle_error(
-    connection: &mut Connection,
+    connection: &mut ServerSideConnection,
     error: &Error,
 ) -> Result<()> {
     println!("Error > {}", error);
 
     let response = "HTTP/1.1 404 OK\r\n\r\n";
 
-    connection.writer.stream.write(response.as_bytes())?;
-    connection.writer.stream.flush()?;
+    connection.get_raw_tcp_stream().write(response.as_bytes())?;
+    connection.get_raw_tcp_stream().flush()?;
 
     Ok(())
 }
 
-pub fn handle_input(connection: &mut Connection) -> Result<()> {
+pub fn handle_input(connection: &mut ServerSideConnection) -> Result<()> {
     match connection.reader.read() {
         Ok(value) => {
-            println!("Got {}", &value);
-            visualize(&value, connection)?;
+            println!("Got {:?}", &value);
+            value.visualize(connection)?;
 
-            let response = doc! {
-                TYPE: MESSAGE,
-                NAME: "Server",
-                TEXT: "Hi, got it."
+            let response = ServerMessage::Text {
+                name: "Server".to_owned(),
+                text: "Hi, got it.".to_owned(),
             };
 
             connection.writer.write(&response)?;
@@ -66,7 +61,7 @@ pub fn handle_connection() -> Result<()> {
 
     for incomming in listener.incoming() {
         let stream = incomming?;
-        let mut connection = shared::connection::prepare(stream)?;
+        let mut connection = ServerSideConnection::new(stream)?;
 
         loop {
             if let Err(..) = handle_input(&mut connection) {

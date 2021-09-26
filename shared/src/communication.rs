@@ -1,5 +1,6 @@
 pub mod json;
 pub mod bson;
+pub mod xxson;
 
 use crate::{Result, Error, ErrorKind};
 
@@ -16,11 +17,12 @@ pub mod dictionary {
     pub const MESSAGE: &'static str = "message";
     pub const TEXT: &'static str = "text";
     pub const NAME: &'static str = "name";
+    pub const PAYLOAD: &'static str = "payload";
 }
 
 pub fn try_explain_common_error(error: &Error) -> bool {
     let mut already_explained = false;
-    
+
     match &error.kind {
         ErrorKind::Io { source: io_error } => match io_error.kind() {
             // This particular error has a very
