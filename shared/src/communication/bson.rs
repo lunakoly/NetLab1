@@ -6,18 +6,15 @@ use crate::capped_reader::{
     CappedRead,
 };
 
-use std::io::prelude::Write;
-use std::io::Read;
-
-use std::net::TcpStream;
+use std::io::{Read, Write};
 
 use bson::Document;
 
 pub struct BsonReader<R> {
-    stream: CappedReader<R>,
+    pub stream: CappedReader<R>,
 }
 
-impl<R: Read> BsonReader<R> {
+impl<R> BsonReader<R> {
     pub fn new(capped_reader: CappedReader<R>) -> BsonReader<R> {
         BsonReader {
             stream: capped_reader,
@@ -25,7 +22,7 @@ impl<R: Read> BsonReader<R> {
     }
 }
 
-impl<'a, R: Read> ReadMessage<Document> for BsonReader<R> {
+impl<R: Read> ReadMessage<Document> for BsonReader<R> {
     fn read(&mut self) -> Result<Document> {
         match Document::from_reader(&mut self.stream) {
             Ok(it) => {
@@ -43,7 +40,11 @@ impl<'a, R: Read> ReadMessage<Document> for BsonReader<R> {
                     Err(kind.into())
                 }
                 bson::de::Error::Io(ref io_error) => match io_error.kind() {
-                    std::io::ErrorKind::UnexpectedEof => {
+                    // 'failed to fill whole buffer'
+                    std::io::ErrorKind::UnexpectedEof |
+                    // the other side disconnects before sending
+                    // a single message
+                    std::io::ErrorKind::ConnectionReset => {
                         Err(ErrorKind::NothingToRead.into())
                     }
                     _ => {
@@ -58,19 +59,19 @@ impl<'a, R: Read> ReadMessage<Document> for BsonReader<R> {
     }
 }
 
-pub struct BsonWriter {
-    pub stream: TcpStream,
+pub struct BsonWriter<W> {
+    pub stream: W,
 }
 
-impl BsonWriter {
-    pub fn new(stream: TcpStream) -> BsonWriter {
+impl<W> BsonWriter<W> {
+    pub fn new(stream: W) -> BsonWriter<W> {
         BsonWriter {
             stream: stream,
         }
     }
 }
 
-impl WriteMessage<&Document> for BsonWriter {
+impl<W: Write> WriteMessage<&Document> for BsonWriter<W> {
     fn write(&mut self, message: &Document) -> Result<()> {
         // Idk, but &mut [0u8; N] doesn't work here,
         // it simply stays filled with 0

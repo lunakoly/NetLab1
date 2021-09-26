@@ -8,6 +8,7 @@ pub enum ErrorKind {
     SerializingBson { source: bson::ser::Error },
     ConversionBson { source: bson::document::ValueAccessError },
     MalformedMessage { message: String },
+    PoisonedLock { message: String },
 }
 
 impl std::fmt::Display for ErrorKind {
@@ -36,6 +37,9 @@ impl std::fmt::Display for ErrorKind {
             }
             ErrorKind::MalformedMessage { message } => {
                 write!(formatter, "Received a message with incorrect format > {}", message)
+            }
+            ErrorKind::PoisonedLock { message } => {
+                write!(formatter, "Ran into a poisoned lock > {}", message)
             }
         }
     }
@@ -150,6 +154,16 @@ impl From<bson::document::ValueAccessError> for Error {
         Error {
             kind: ErrorKind::ConversionBson {
                 source: source,
+            }
+        }
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for Error {
+    fn from(source: std::sync::PoisonError<T>) -> Self {
+        Error {
+            kind: ErrorKind::PoisonedLock {
+                message: format!("{}", source),
             }
         }
     }

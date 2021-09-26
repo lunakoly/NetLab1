@@ -2,18 +2,15 @@ use crate::{ErrorKind, Result};
 use crate::capped_reader::{CappedReader, CappedRead};
 use crate::communication::{ReadMessage, WriteMessage};
 
-use std::io::prelude::Write;
-use std::io::Read;
-
-use std::net::TcpStream;
+use std::io::{Read, Write};
 
 use serde_json::{Deserializer, Value};
 
 pub struct JsonReader<R> {
-    stream: CappedReader<R>,
+    pub stream: CappedReader<R>,
 }
 
-impl<R: Read> JsonReader<R> {
+impl<R> JsonReader<R> {
     pub fn new(capped_reader: CappedReader<R>) -> JsonReader<R> {
         JsonReader {
             stream: capped_reader,
@@ -21,7 +18,7 @@ impl<R: Read> JsonReader<R> {
     }
 }
 
-impl<'a, R: Read> ReadMessage<Value> for JsonReader<R> {
+impl<R: Read> ReadMessage<Value> for JsonReader<R> {
     fn read(&mut self) -> Result<Value> {
         let mut iterator = Deserializer::from_reader(&mut self.stream).into_iter::<Value>();
 
@@ -40,19 +37,19 @@ impl<'a, R: Read> ReadMessage<Value> for JsonReader<R> {
     }
 }
 
-pub struct JsonWriter {
-    pub stream: TcpStream,
+pub struct JsonWriter<W> {
+    pub stream: W,
 }
 
-impl JsonWriter {
-    pub fn new(stream: TcpStream) -> JsonWriter {
+impl<W> JsonWriter<W> {
+    pub fn new(stream: W) -> JsonWriter<W> {
         JsonWriter {
             stream: stream,
         }
     }
 }
 
-impl WriteMessage<&Value> for JsonWriter {
+impl<W: Write> WriteMessage<&Value> for JsonWriter<W> {
     fn write(&mut self, message: &Value) -> Result<()> {
         self.stream.write(message.to_string().as_bytes())?;
         self.stream.flush()?;

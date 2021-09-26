@@ -12,7 +12,7 @@ pub trait WriteMessage<M> {
     fn write(&mut self, message: M) -> Result<()>;
 }
 
-pub fn try_explain_common_error(error: &Error) -> bool {
+pub fn try_explain_common_error(error: &Error, prefix: &str) -> bool {
     let mut already_explained = false;
 
     match &error.kind {
@@ -20,7 +20,7 @@ pub fn try_explain_common_error(error: &Error) -> bool {
             // This particular error has a very
             // specific meaning in terms of communication
             std::io::ErrorKind::InvalidData => {
-                println!("Error > Too much data for a single message, disconnecting");
+                println!("{}Error > Too much data for a single message, disconnecting", prefix);
                 already_explained = true;
             }
             _ => {}

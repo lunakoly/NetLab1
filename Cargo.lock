@@ -273,6 +273,7 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "bson",
+ "chrono",
  "serde",
  "serde_json",
 ]

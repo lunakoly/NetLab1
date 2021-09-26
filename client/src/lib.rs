@@ -1,12 +1,15 @@
 mod chars_reader;
 mod commands;
 
-use shared::{Result, Error, with_error_report};
+use shared::{Result, with_error_report};
 
 use shared::communication::xxson::{
     ClientSideConnection,
     ClientMessage,
-    Visualize,
+    ServerMessage,
+    VisualizeServerMessage,
+    XXsonReader,
+    XXsonWriter,
 };
 
 use shared::communication::{
@@ -21,19 +24,19 @@ use std::net::TcpStream;
 
 use std::io::{BufRead};
 
-fn handle_error(error: &Error) {
-    println!("Error > {}", error);
-}
-
-fn handle_input(connection: &mut ClientSideConnection) -> Result<()> {
-    match connection.reader.read() {
+fn handle_server_messages(
+    mut reader: XXsonReader<TcpStream, ServerMessage>,
+) -> Result<()> {
+    match reader.read() {
         Ok(value) => {
-            value.visualize(connection)?;
+            value.visualize(&reader)?;
             Ok(())
         }
         Err(error) => {
-            if try_explain_common_error(&error) {
-                handle_error(&error);
+            let prefix = "[Server] ";
+
+            if try_explain_common_error(&error, prefix) {
+                println!("{}Error > {}", prefix, error);
             }
 
             Err(error)
@@ -41,10 +44,9 @@ fn handle_input(connection: &mut ClientSideConnection) -> Result<()> {
     }
 }
 
-fn handle_connection() -> Result<()> {
-    let stream = TcpStream::connect("127.0.0.1:6969")?;
-    let mut connection = ClientSideConnection::new(stream)?;
-
+fn handle_user_input(
+    mut writer: XXsonWriter<TcpStream, ClientMessage>,
+) -> Result<()> {
     let stdin = std::io::stdin();
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
@@ -56,8 +58,7 @@ fn handle_connection() -> Result<()> {
                     text: text,
                 };
 
-                connection.writer.write(&message)?;
-                handle_input(&mut connection)?;
+                writer.write(&message)?;
             }
             commands::Command::End => {
                 break
@@ -66,6 +67,20 @@ fn handle_connection() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn handle_connection() -> Result<()> {
+    let stream = TcpStream::connect("127.0.0.1:6969")?;
+    let connection = ClientSideConnection::new(stream)?;
+    let reader = connection.reader;
+
+    std::thread::spawn(|| -> Result<()> {
+        handle_server_messages(reader)?;
+        Ok(())
+    });
+
+    handle_user_input(connection.writer)?;
     Ok(())
 }
 

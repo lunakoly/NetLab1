@@ -1,4 +1,5 @@
 use crate::{ErrorKind, Result};
+use crate::helpers::{NamesMap, get_name};
 use crate::communication::{ReadMessage, WriteMessage};
 use crate::communication::bson::{BsonReader, BsonWriter};
 
@@ -7,9 +8,9 @@ use crate::capped_reader::{
     IntoCappedReader,
 };
 
-use std::io::Read;
+use std::io::{Read, Write};
 
-use std::net::TcpStream;
+use std::net::{TcpStream, SocketAddr};
 
 use serde::{Serialize, Deserialize};
 
@@ -30,7 +31,7 @@ pub struct XXsonReader<R, M> {
     phantom: PhantomData<M>,
 }
 
-impl<R: Read, M> XXsonReader<R, M> {
+impl<R, M> XXsonReader<R, M> {
     pub fn new(capped_reader: CappedReader<R>) -> XXsonReader<R, M> {
         XXsonReader {
             backend: BsonReader::new(capped_reader),
@@ -41,7 +42,7 @@ impl<R: Read, M> XXsonReader<R, M> {
 
 // TODO: review
 
-impl<'a, R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
+impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
     fn read(&mut self) -> Result<ClientMessage> {
         match self.backend.read() {
             Ok(it) => {
@@ -55,7 +56,7 @@ impl<'a, R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
     }
 }
 
-impl<'a, R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage> {
+impl<R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage> {
     fn read(&mut self) -> Result<ServerMessage> {
         match self.backend.read() {
             Ok(it) => {
@@ -69,13 +70,13 @@ impl<'a, R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage> {
     }
 }
 
-pub struct XXsonWriter<M> {
-    backend: BsonWriter,
+pub struct XXsonWriter<W, M> {
+    backend: BsonWriter<W>,
     phantom: PhantomData<M>,
 }
 
-impl<M> XXsonWriter<M> {
-    pub fn new(stream: TcpStream) -> XXsonWriter<M> {
+impl<W, M> XXsonWriter<W, M> {
+    pub fn new(stream: W) -> XXsonWriter<W, M> {
         XXsonWriter {
             backend: BsonWriter::new(stream),
             phantom: PhantomData,
@@ -83,7 +84,7 @@ impl<M> XXsonWriter<M> {
     }
 }
 
-impl WriteMessage<&ClientMessage> for XXsonWriter<ClientMessage> {
+impl<W: Write> WriteMessage<&ClientMessage> for XXsonWriter<W, ClientMessage> {
     fn write(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -94,7 +95,7 @@ impl WriteMessage<&ClientMessage> for XXsonWriter<ClientMessage> {
     }
 }
 
-impl WriteMessage<&ServerMessage> for XXsonWriter<ServerMessage> {
+impl<W: Write> WriteMessage<&ServerMessage> for XXsonWriter<W, ServerMessage> {
     fn write(&mut self, message: &ServerMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -106,12 +107,12 @@ impl WriteMessage<&ServerMessage> for XXsonWriter<ServerMessage> {
 }
 
 pub struct ClientSideConnection {
-    pub writer: XXsonWriter<ClientMessage>,
+    pub writer: XXsonWriter<TcpStream, ClientMessage>,
     pub reader: XXsonReader<TcpStream, ServerMessage>,
 }
 
 pub struct ServerSideConnection {
-    pub writer: XXsonWriter<ServerMessage>,
+    pub writer: XXsonWriter<TcpStream, ServerMessage>,
     pub reader: XXsonReader<TcpStream, ClientMessage>,
 }
 
@@ -138,31 +139,54 @@ impl ServerSideConnection {
 }
 
 pub trait Connection {
-    fn get_raw_tcp_stream(&mut self) -> &mut TcpStream;
+    fn get_remote_address(&self) -> Result<SocketAddr>;
+
+    fn get_name(&self, names: NamesMap) -> Result<String> {
+        let address = self.get_remote_address()?.to_string();
+        get_name(names, address)
+    }
+
+    fn get_personality_prefix(&self, names: NamesMap) -> Result<String> {
+        let name = self.get_name(names)?;
+        let time = chrono::Utc::now();
+        Ok(format!("<{}> [{}] ", time, name))
+    }
+}
+
+impl<M> Connection for XXsonWriter<TcpStream, M> {
+    fn get_remote_address(&self) -> Result<SocketAddr> {
+        Ok(self.backend.stream.peer_addr()?)
+    }
+}
+
+impl<M> Connection for XXsonReader<TcpStream, M> {
+    fn get_remote_address(&self) -> Result<SocketAddr> {
+        Ok(self.backend.stream.stream.peer_addr()?)
+    }
 }
 
 impl Connection for ClientSideConnection {
-    fn get_raw_tcp_stream(&mut self) -> &mut TcpStream {
-        &mut self.writer.backend.stream
+    fn get_remote_address(&self) -> Result<SocketAddr> {
+        self.writer.get_remote_address()
     }
 }
 
 impl Connection for ServerSideConnection {
-    fn get_raw_tcp_stream(&mut self) -> &mut TcpStream {
-        &mut self.writer.backend.stream
+    fn get_remote_address(&self) -> Result<SocketAddr> {
+        self.writer.get_remote_address()
     }
 }
 
-pub trait Visualize {
-    fn visualize(&self, connection: &mut dyn Connection) -> Result<()>;
+pub trait VisualizeClientMessage {
+    fn visualize(&self, names: NamesMap, connection: &dyn Connection) -> Result<()>;
 }
 
-impl Visualize for ClientMessage {
-    fn visualize(&self, connection: &mut dyn Connection) -> Result<()> {
+impl VisualizeClientMessage for ClientMessage {
+    fn visualize(&self, names: NamesMap, connection: &dyn Connection) -> Result<()> {
         match self {
             ClientMessage::Text { text } => {
-                let address = connection.get_raw_tcp_stream().peer_addr()?.to_string();
-                println!("[{}] {}", address, text);
+                let prefix = connection.get_personality_prefix(names)?;
+                println!("{}{}", prefix, text);
             }
         };
 
@@ -170,8 +194,12 @@ impl Visualize for ClientMessage {
     }
 }
 
-impl Visualize for ServerMessage {
-    fn visualize(&self, _: &mut dyn Connection) -> Result<()> {
+pub trait VisualizeServerMessage {
+    fn visualize(&self, connection: &dyn Connection) -> Result<()>;
+}
+
+impl VisualizeServerMessage for ServerMessage {
+    fn visualize(&self, _: &dyn Connection) -> Result<()> {
         match self {
             ServerMessage::Text { text, name } => {
                 println!("[{}] {}", name, text);
