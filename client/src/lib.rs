@@ -21,11 +21,11 @@ use std::net::TcpStream;
 
 use std::io::{BufRead};
 
-pub fn handle_error(error: &Error) {
+fn handle_error(error: &Error) {
     println!("Error > {}", error);
 }
 
-pub fn handle_input(connection: &mut ClientSideConnection) -> Result<()> {
+fn handle_input(connection: &mut ClientSideConnection) -> Result<()> {
     match connection.reader.read() {
         Ok(value) => {
             value.visualize(connection)?;
@@ -41,7 +41,7 @@ pub fn handle_input(connection: &mut ClientSideConnection) -> Result<()> {
     }
 }
 
-pub fn handle_connection() -> Result<()> {
+fn handle_connection() -> Result<()> {
     let stream = TcpStream::connect("127.0.0.1:6969")?;
     let mut connection = ClientSideConnection::new(stream)?;
 

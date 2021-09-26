@@ -17,7 +17,7 @@ use shared::communication::xxson::{
     Connection,
 };
 
-pub fn handle_error(
+fn handle_error(
     connection: &mut ServerSideConnection,
     error: &Error,
 ) -> Result<()> {
@@ -31,7 +31,7 @@ pub fn handle_error(
     Ok(())
 }
 
-pub fn handle_input(connection: &mut ServerSideConnection) -> Result<()> {
+fn handle_input(connection: &mut ServerSideConnection) -> Result<()> {
     match connection.reader.read() {
         Ok(value) => {
             value.visualize(connection)?;
@@ -55,7 +55,7 @@ pub fn handle_input(connection: &mut ServerSideConnection) -> Result<()> {
     }
 }
 
-pub fn handle_client(stream: TcpStream) -> Result<()> {
+fn handle_client(stream: TcpStream) -> Result<()> {
     let mut connection = ServerSideConnection::new(stream)?;
 
     loop {
@@ -67,7 +67,7 @@ pub fn handle_client(stream: TcpStream) -> Result<()> {
     Ok(())
 }
 
-pub fn handle_connection() -> Result<()> {
+fn handle_connection() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:6969")?;
 
     for incomming in listener.incoming() {
