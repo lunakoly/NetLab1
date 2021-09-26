@@ -34,7 +34,6 @@ pub fn handle_error(
 pub fn handle_input(connection: &mut ServerSideConnection) -> Result<()> {
     match connection.reader.read() {
         Ok(value) => {
-            println!("Got {:?}", &value);
             value.visualize(connection)?;
 
             let response = ServerMessage::Text {
