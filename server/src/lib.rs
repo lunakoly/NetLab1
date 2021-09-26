@@ -1,4 +1,4 @@
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 
 use std::io::Write;
 
@@ -55,18 +55,24 @@ pub fn handle_input(connection: &mut ServerSideConnection) -> Result<()> {
     }
 }
 
+pub fn handle_client(stream: TcpStream) -> Result<()> {
+    let mut connection = ServerSideConnection::new(stream)?;
+
+    loop {
+        if let Err(..) = handle_input(&mut connection) {
+            break
+        }
+    }
+
+    Ok(())
+}
+
 pub fn handle_connection() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:6969")?;
 
     for incomming in listener.incoming() {
         let stream = incomming?;
-        let mut connection = ServerSideConnection::new(stream)?;
-
-        loop {
-            if let Err(..) = handle_input(&mut connection) {
-                break
-            }
-        }
+        std::thread::spawn(|| handle_client(stream));
     }
 
     Ok(())
