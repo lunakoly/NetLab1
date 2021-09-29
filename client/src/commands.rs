@@ -6,17 +6,53 @@ pub enum Command {
     Nothing,
     End,
     Message { text: String },
+    Rename { new_name: String },
+}
+
+fn is_blank(symbol: char) -> bool {
+    symbol == '\r' ||
+    symbol == '\n' ||
+    symbol == '\t' ||
+    symbol == ' '
+}
+
+fn parse_rename(words: &[String]) -> Command {
+    if words.len() >= 2 {
+        Command::Rename {
+            new_name: words[1].clone(),
+        }
+    } else {
+        Command::Nothing
+    }
 }
 
 fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
+    let mut words = vec!["".to_owned()];
+
     while let Some(it) = input.next() {
-        if it == '\n' {
+        if it == '\r' {
+            // ignore
+        } else if it == '\n' {
             break
+        } else if is_blank(it) {
+            if words[words.len() - 1].len() != 0 {
+                words.push("".to_owned());
+            }
+        } else {
+            let last_index = words.len() - 1;
+            words[last_index].push(it);
         }
     }
 
-    println!("Well, yea, you issued a command, but I missed it, sorry...");
-    Command::Nothing
+    if words[0] == "/" {
+        println!("Nooooooo, you can't put a blank symbol after the '/'!!!!!!");
+        Command::Nothing
+    } else if words[0] == "/rename" {
+        parse_rename(&words)
+    } else {
+        println!("Well, yea, you issued a command, but I missed it, sorry...");
+        Command::Nothing
+    }
 }
 
 fn parse_message<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {

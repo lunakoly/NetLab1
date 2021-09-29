@@ -24,6 +24,7 @@ use bson::doc;
 pub enum ClientMessage {
     Text { text: String },
     Leave,
+    Rename { new_name: String },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -32,6 +33,8 @@ pub enum ServerMessage {
     NewUser { name: String, time: bson::DateTime },
     Interrupt { name: String, time: bson::DateTime },
     UserLeaves { name: String, time: bson::DateTime },
+    Support { text: String },
+    UserRenamed { old_name: String, new_name: String },
 }
 
 pub struct XXsonReader<R, M> {
@@ -213,6 +216,12 @@ impl VisualizeServerMessage for ServerMessage {
             }
             ServerMessage::UserLeaves { name, .. } => {
                 format!("~~ {} leaves the party ~~", name)
+            }
+            ServerMessage::Support { text } => {
+                format!("(Server) {}", &text)
+            }
+            ServerMessage::UserRenamed { old_name, new_name } => {
+                format!("~~ He once used to be {}, but now he is {} ~~", &old_name, &new_name)
             }
         };
 

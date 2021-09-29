@@ -80,7 +80,14 @@ fn handle_user_input(
                 // But this is not, the program shuts down
                 break
             }
-            _ => {}
+            commands::Command::Rename { new_name } => {
+                let message = ClientMessage::Rename {
+                    new_name: new_name,
+                };
+
+                writer.write(&message)?;
+            }
+            commands::Command::Nothing => {}
         }
     }
 

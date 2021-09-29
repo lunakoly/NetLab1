@@ -30,10 +30,11 @@ use std::thread;
 fn handle_input(
     reader: &mut XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
+    clients: WritingKnot<TcpStream, ServerMessage>,
     messages: SafeVec<ServerMessage>,
 ) -> Result<bool> {
     let time = chrono::Utc::now();
-    let name = reader.get_name(names)?;
+    let name = reader.get_name(names.clone())?;
 
     match reader.read() {
         Ok(value) => match value {
@@ -52,6 +53,48 @@ fn handle_input(
             ClientMessage::Leave => {
                 Ok(true)
             }
+            ClientMessage::Rename { new_name } => {
+                let mut the_names = names.write()?;
+                let address = reader.get_remote_address()?.to_string();
+                let name_is_free = the_names.values().all(|it| it != &new_name);
+
+                if name_is_free {
+                    let old_name = if the_names.contains_key(&address) {
+                        the_names[&address].clone()
+                    } else {
+                        address.clone()
+                    };
+
+                    the_names.insert(address.clone(), new_name.clone());
+
+                    let response = ServerMessage::UserRenamed {
+                        old_name: old_name,
+                        new_name: new_name,
+                    };
+
+                    messages.write()?.push(response);
+                    return Ok(false)
+                }
+
+                let index = find_writer_with_address(
+                    reader.get_remote_address()?,
+                    clients.clone()
+                )?;
+
+                let mut the_clients = clients.write()?;
+
+                let writer = match index {
+                    Some(it) => &mut the_clients[it],
+                    None => return Ok(true)
+                };
+
+                let message = ServerMessage::Support {
+                    text: "This name has already been taken, choose another one".to_owned()
+                };
+
+                writer.write(&message)?;
+                Ok(false)
+            }
         }
         Err(error) => {
             let explaination = match try_explain_common_error(&error) {
@@ -65,11 +108,11 @@ fn handle_input(
     }
 }
 
-fn remove_writer_with_address(
+fn find_writer_with_address(
     address: SocketAddr,
     clients: WritingKnot<TcpStream, ServerMessage>,
-) -> Result<()> {
-    let mut the_clients = clients.write()?;
+) -> Result<Option<usize>> {
+    let the_clients = clients.write()?;
     let mut current: Option<usize> = None;
 
     for (index, it) in the_clients.iter().enumerate() {
@@ -77,6 +120,16 @@ fn remove_writer_with_address(
             current = Some(index);
         }
     }
+
+    Ok(current)
+}
+
+fn remove_writer_with_address(
+    address: SocketAddr,
+    clients: WritingKnot<TcpStream, ServerMessage>,
+) -> Result<()> {
+    let current = find_writer_with_address(address, clients.clone())?;
+    let mut the_clients = clients.write()?;
 
     // In fact, the corresponding
     // writer is always present.
@@ -94,7 +147,7 @@ fn handle_client_messages(
     messages: SafeVec<ServerMessage>,
 ) -> Result<()> {
     loop {
-        let result = handle_input(&mut reader, names.clone(), messages.clone());
+        let result = handle_input(&mut reader, names.clone(), clients.clone(), messages.clone());
 
         match result {
             Ok(true) => {
