@@ -27,6 +27,7 @@ pub enum ClientMessage {
 pub enum ServerMessage {
     Text { text: String, name: String, time: bson::DateTime },
     NewUser { name: String, time: bson::DateTime },
+    Interrupt { name: String, time: bson::DateTime },
 }
 
 pub struct XXsonReader<R, M> {
@@ -195,6 +196,9 @@ impl VisualizeServerMessage for ServerMessage {
             }
             ServerMessage::NewUser { name, .. } => {
                 format!("~~ Meat our new mate: {} ~~", name)
+            }
+            ServerMessage::Interrupt { name, .. } => {
+                format!("~~ Oh no, we've lost {} ~~", name)
             }
         };
 

@@ -1,6 +1,6 @@
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, SocketAddr};
 
-use shared::{Result, with_error_report};
+use shared::{Result, with_error_report, ErrorKind};
 
 use shared::helpers::{NamesMap, SafeVec};
 
@@ -60,6 +60,28 @@ fn handle_input(
     }
 }
 
+fn remove_writer_with_address(
+    address: SocketAddr,
+    clients: WritingKnot<TcpStream, ServerMessage>,
+) -> Result<()> {
+    let mut the_clients = clients.write()?;
+    let mut current: Option<usize> = None;
+
+    for (index, it) in the_clients.iter().enumerate() {
+        if it.get_remote_address()? == address {
+            current = Some(index);
+        }
+    }
+
+    // In fact, the corresponding
+    // writer is always present.
+    if let Some(index) = current {
+        the_clients.remove(index);
+    }
+
+    Ok(())
+}
+
 fn handle_client_messages(
     mut reader: XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
@@ -67,22 +89,20 @@ fn handle_client_messages(
     messages: SafeVec<ServerMessage>,
 ) -> Result<()> {
     loop {
-        if let Err(..) = handle_input(&mut reader, names.clone(), messages.clone()) {
-            let mut the_clients = clients.write()?;
-            let mut current: Option<usize> = None;
+        if let Err(error) = handle_input(&mut reader, names.clone(), messages.clone()) {
+            if let ErrorKind::NothingToRead = error.kind {
+                let time = chrono::Utc::now();
+                let name = reader.get_name(names)?;
 
-            for (index, it) in the_clients.iter().enumerate() {
-                if it.get_remote_address()? == reader.get_remote_address()? {
-                    current = Some(index);
-                }
+                let response = ServerMessage::Interrupt {
+                    name: name,
+                    time: time.into()
+                };
+
+                messages.write()?.push(response);
             }
 
-            // In fact, the corresponding
-            // writer is always present.
-            if let Some(index) = current {
-                the_clients.remove(index);
-            }
-
+            remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
             break
         }
     }
