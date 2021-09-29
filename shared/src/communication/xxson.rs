@@ -18,9 +18,12 @@ use std::marker::PhantomData;
 
 use std::sync::{Arc, RwLock};
 
+use bson::doc;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
     Text { text: String },
+    Leave,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,6 +31,7 @@ pub enum ServerMessage {
     Text { text: String, name: String, time: bson::DateTime },
     NewUser { name: String, time: bson::DateTime },
     Interrupt { name: String, time: bson::DateTime },
+    UserLeaves { name: String, time: bson::DateTime },
 }
 
 pub struct XXsonReader<R, M> {
@@ -94,9 +98,16 @@ impl<W: Write> WriteMessage<&ClientMessage> for XXsonWriter<W, ClientMessage> {
     fn write(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
-        match serialized.as_document() {
-            Some(document) => self.backend.write(document),
-            None => Err(ErrorKind::NothingToRead.into())
+        if let Some(it) = serialized.as_document() {
+            self.backend.write(it)
+        } else if let Some(it) = serialized.as_str() {
+            let wrapper = doc! {
+                it: {}
+            };
+
+            self.backend.write(&wrapper)
+        } else {
+            Err(ErrorKind::NothingToRead.into())
         }
     }
 }
@@ -199,6 +210,9 @@ impl VisualizeServerMessage for ServerMessage {
             }
             ServerMessage::Interrupt { name, .. } => {
                 format!("~~ Oh no, we've lost {} ~~", name)
+            }
+            ServerMessage::UserLeaves { name, .. } => {
+                format!("~~ {} leaves the party ~~", name)
             }
         };
 

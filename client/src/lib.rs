@@ -73,6 +73,11 @@ fn handle_user_input(
                 writer.write(&message)?;
             }
             commands::Command::End => {
+                // TODO: review
+                // During Ctrl-C (at least on Win) this
+                // is executed:
+                writer.write(&ClientMessage::Leave)?;
+                // But this is not, the program shuts down
                 break
             }
             _ => {}

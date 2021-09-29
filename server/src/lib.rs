@@ -25,11 +25,13 @@ use std::collections::HashMap;
 
 use std::thread;
 
+// TODO: review
+/// Returns true if the user's leaving.
 fn handle_input(
     reader: &mut XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
     messages: SafeVec<ServerMessage>,
-) -> Result<()> {
+) -> Result<bool> {
     let time = chrono::Utc::now();
     let name = reader.get_name(names)?;
 
@@ -45,7 +47,10 @@ fn handle_input(
                 };
 
                 messages.write()?.push(response);
-                Ok(())
+                Ok(false)
+            }
+            ClientMessage::Leave => {
+                Ok(true)
             }
         }
         Err(error) => {
@@ -89,21 +94,41 @@ fn handle_client_messages(
     messages: SafeVec<ServerMessage>,
 ) -> Result<()> {
     loop {
-        if let Err(error) = handle_input(&mut reader, names.clone(), messages.clone()) {
-            if let ErrorKind::NothingToRead = error.kind {
+        let result = handle_input(&mut reader, names.clone(), messages.clone());
+
+        match result {
+            Ok(true) => {
                 let time = chrono::Utc::now();
                 let name = reader.get_name(names)?;
 
-                let response = ServerMessage::Interrupt {
+                println!("<{}> User Leaves > {}", &time, &name);
+                remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
+
+                let response = ServerMessage::UserLeaves {
                     name: name,
                     time: time.into()
                 };
 
                 messages.write()?.push(response);
+                break
             }
+            Err(error) => {
+                if let ErrorKind::NothingToRead = error.kind {
+                    let time = chrono::Utc::now();
+                    let name = reader.get_name(names)?;
 
-            remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
-            break
+                    let response = ServerMessage::Interrupt {
+                        name: name,
+                        time: time.into()
+                    };
+
+                    messages.write()?.push(response);
+                }
+
+                remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
+                break
+            }
+            _ => {}
         }
     }
 
