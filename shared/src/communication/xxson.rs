@@ -16,6 +16,8 @@ use serde::{Serialize, Deserialize};
 
 use std::marker::PhantomData;
 
+use std::sync::{Arc, RwLock};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
     Text { text: String },
@@ -83,6 +85,8 @@ impl<W, M> XXsonWriter<W, M> {
         }
     }
 }
+
+pub type WritingKnot<W, M> = Arc<RwLock<Vec<XXsonWriter<W, M>>>>;
 
 impl<W: Write> WriteMessage<&ClientMessage> for XXsonWriter<W, ClientMessage> {
     fn write(&mut self, message: &ClientMessage) -> Result<()> {
@@ -177,35 +181,18 @@ impl Connection for ServerSideConnection {
     }
 }
 
-pub trait VisualizeClientMessage {
-    fn visualize(&self, names: NamesMap, connection: &dyn Connection) -> Result<()>;
-}
-
-impl VisualizeClientMessage for ClientMessage {
-    fn visualize(&self, names: NamesMap, connection: &dyn Connection) -> Result<()> {
-        match self {
-            ClientMessage::Text { text } => {
-                let prefix = connection.get_personality_prefix(names)?;
-                println!("{}{}", prefix, text);
-            }
-        };
-
-        Ok(())
-    }
-}
-
 pub trait VisualizeServerMessage {
-    fn visualize(&self, connection: &dyn Connection) -> Result<()>;
+    fn visualize(&self, connection: &dyn Connection) -> Result<String>;
 }
 
 impl VisualizeServerMessage for ServerMessage {
-    fn visualize(&self, _: &dyn Connection) -> Result<()> {
-        match self {
+    fn visualize(&self, _: &dyn Connection) -> Result<String> {
+        let text = match self {
             ServerMessage::Text { text, name } => {
-                println!("[{}] {}", name, text);
+                format!("[{}] {}", name, text)
             }
         };
 
-        Ok(())
+        Ok(text)
     }
 }

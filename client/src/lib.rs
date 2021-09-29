@@ -24,24 +24,36 @@ use std::net::TcpStream;
 
 use std::io::{BufRead};
 
-fn handle_server_messages(
-    mut reader: XXsonReader<TcpStream, ServerMessage>,
+fn handle_server_input(
+    reader: &mut XXsonReader<TcpStream, ServerMessage>,
 ) -> Result<()> {
     match reader.read() {
         Ok(value) => {
-            value.visualize(&reader)?;
+            println!("{}", value.visualize(reader)?);
             Ok(())
         }
         Err(error) => {
-            let prefix = "[Server] ";
+            let explaination = match try_explain_common_error(&error) {
+                Some(thing) => thing,
+                None => format!("{}", error)
+            };
 
-            if try_explain_common_error(&error, prefix) {
-                println!("{}Error > {}", prefix, error);
-            }
-
+            println!("[Server] Error > {}", &explaination);
             Err(error)
         }
     }
+}
+
+fn handle_server_messages(
+    mut reader: XXsonReader<TcpStream, ServerMessage>,
+) -> Result<()> {
+    loop {
+        if let Err(..) = handle_server_input(&mut reader) {
+            break
+        }
+    }
+
+    Ok(())
 }
 
 fn handle_user_input(
@@ -75,10 +87,7 @@ fn handle_connection() -> Result<()> {
     let connection = ClientSideConnection::new(stream)?;
     let reader = connection.reader;
 
-    std::thread::spawn(|| -> Result<()> {
-        handle_server_messages(reader)?;
-        Ok(())
-    });
+    std::thread::spawn(|| handle_server_messages(reader));
 
     handle_user_input(connection.writer)?;
     Ok(())

@@ -2,7 +2,7 @@ use std::net::{TcpListener, TcpStream};
 
 use shared::{Result, with_error_report};
 
-use shared::helpers::NamesMap;
+use shared::helpers::{NamesMap, SafeVec};
 
 use shared::communication::{
     ReadMessage,
@@ -13,45 +13,59 @@ use shared::communication::{
 use shared::communication::xxson::{
     ServerSideConnection,
     ServerMessage,
-    VisualizeClientMessage,
     Connection,
+    WritingKnot,
+    XXsonReader,
+    ClientMessage,
 };
 
 use std::sync::{Arc, RwLock};
 
 use std::collections::HashMap;
 
-fn handle_input(connection: &mut ServerSideConnection, names: NamesMap) -> Result<()> {
-    match connection.reader.read() {
-        Ok(value) => {
-            value.visualize(names, connection)?;
+use std::thread;
 
-            let response = ServerMessage::Text {
-                name: "Server".to_owned(),
-                text: "Hi, got it.".to_owned(),
-            };
+fn handle_input(
+    reader: &mut XXsonReader<TcpStream, ClientMessage>,
+    names: NamesMap,
+    messages: SafeVec<ServerMessage>,
+) -> Result<()> {
+    let time = chrono::Utc::now();
+    let name = reader.get_name(names)?;
 
-            connection.writer.write(&response)?;
+    match reader.read() {
+        Ok(value) => match value {
+            ClientMessage::Text { text } => {
+                println!("<{}> [{}] {}", &time, &name, &text);
 
-            Ok(())
+                let response = ServerMessage::Text {
+                    name: name,
+                    text: text,
+                };
+
+                messages.write()?.push(response);
+                Ok(())
+            }
         }
         Err(error) => {
-            let prefix = connection.get_personality_prefix(names)?;
+            let explaination = match try_explain_common_error(&error) {
+                Some(thing) => thing,
+                None => format!("{}", error)
+            };
 
-            if try_explain_common_error(&error, &prefix) {
-                println!("{}Error > {}", &prefix, error);
-            }
-
+            println!("<{}> [{}] Error > {}", &time, &name, &explaination);
             Err(error)
         }
     }
 }
 
-fn handle_client(stream: TcpStream, names: NamesMap) -> Result<()> {
-    let mut connection = ServerSideConnection::new(stream)?;
-
+fn handle_client_messages(
+    mut reader: XXsonReader<TcpStream, ClientMessage>,
+    names: NamesMap,
+    messages: SafeVec<ServerMessage>,
+) -> Result<()> {
     loop {
-        if let Err(..) = handle_input(&mut connection, names.clone()) {
+        if let Err(..) = handle_input(&mut reader, names.clone(), messages.clone()) {
             break
         }
     }
@@ -70,15 +84,52 @@ fn setup_names_mapping() -> NamesMap {
     Arc::new(RwLock::new(names))
 }
 
+fn handle_broadcast_queue(
+    clients: WritingKnot<TcpStream, ServerMessage>,
+    messages: SafeVec<ServerMessage>,
+) -> Result<()> {
+    loop {
+        thread::sleep(std::time::Duration::from_millis(16));
+
+        let mut the_messages = messages.write()?;
+
+        if the_messages.is_empty() {
+            continue
+        }
+
+        let message = the_messages.remove(0);
+        let mut the_clients = clients.write()?;
+
+        for writer in the_clients.iter_mut() {
+            writer.write(&message)?;
+        }
+    }
+}
+
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
+
+    let clients = Arc::new(RwLock::new(vec![]));
+    let messages = Arc::new(RwLock::new(vec![]));
+
+    let new_clients = clients.clone();
+    let new_messages = messages.clone();
+
+    thread::spawn(|| handle_broadcast_queue(new_clients, new_messages));
 
     let listener = TcpListener::bind("127.0.0.1:6969")?;
 
     for incomming in listener.incoming() {
-        let stream = incomming?;
+        let connection = ServerSideConnection::new(incomming?)?;
+
         let new_names = names.clone();
-        std::thread::spawn(|| handle_client(stream, new_names));
+        let new_messages = messages.clone();
+
+        let reader = connection.reader;
+
+        thread::spawn(|| handle_client_messages(reader, new_names, new_messages));
+
+        clients.write()?.push(connection.writer);
     }
 
     Ok(())

@@ -28,3 +28,5 @@ pub fn get_name(names: NamesMap, address: String) -> Result<String> {
 
     Ok(proper)
 }
+
+pub type SafeVec<T> = Arc<RwLock<Vec<T>>>;
