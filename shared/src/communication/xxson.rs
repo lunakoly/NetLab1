@@ -26,6 +26,7 @@ pub enum ClientMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     Text { text: String, name: String, time: bson::DateTime },
+    NewUser { name: String, time: bson::DateTime },
 }
 
 pub struct XXsonReader<R, M> {
@@ -191,6 +192,9 @@ impl VisualizeServerMessage for ServerMessage {
             ServerMessage::Text { text, name, time } => {
                 let the_time = time.to_chrono();
                 format!("<{}> [{}] {}", the_time, name, text)
+            }
+            ServerMessage::NewUser { name, .. } => {
+                format!("~~ Meat our new mate: {} ~~", name)
             }
         };
 

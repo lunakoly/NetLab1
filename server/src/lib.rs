@@ -36,7 +36,7 @@ fn handle_input(
     match reader.read() {
         Ok(value) => match value {
             ClientMessage::Text { text } => {
-                println!("<{}> [{}] {}", &time, &name, &text);
+                println!("<{}> Message > {} > {}", &time, &name, &text);
 
                 let response = ServerMessage::Text {
                     name: name,
@@ -54,7 +54,7 @@ fn handle_input(
                 None => format!("{}", error)
             };
 
-            println!("<{}> [{}] Error > {}", &time, &name, &explaination);
+            println!("<{}> Error > {} > {}", &time, &name, &explaination);
             Err(error)
         }
     }
@@ -63,10 +63,26 @@ fn handle_input(
 fn handle_client_messages(
     mut reader: XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
+    clients: WritingKnot<TcpStream, ServerMessage>,
     messages: SafeVec<ServerMessage>,
 ) -> Result<()> {
     loop {
         if let Err(..) = handle_input(&mut reader, names.clone(), messages.clone()) {
+            let mut the_clients = clients.write()?;
+            let mut current: Option<usize> = None;
+
+            for (index, it) in the_clients.iter().enumerate() {
+                if it.get_remote_address()? == reader.get_remote_address()? {
+                    current = Some(index);
+                }
+            }
+
+            // In fact, the corresponding
+            // writer is always present.
+            if let Some(index) = current {
+                the_clients.remove(index);
+            }
+
             break
         }
     }
@@ -78,11 +94,24 @@ fn setup_names_mapping() -> NamesMap {
     let mut names = HashMap::new();
 
     names.insert(
-        "127.0.0.1".to_owned(),
+        "127.0.0.1:6969".to_owned(),
         "Server".to_owned(),
     );
 
     Arc::new(RwLock::new(names))
+}
+
+fn send_broadcast(
+    message: &ServerMessage,
+    clients: WritingKnot<TcpStream, ServerMessage>,
+) -> Result<()> {
+    let mut the_clients = clients.write()?;
+
+    for writer in the_clients.iter_mut() {
+        writer.write(message)?;
+    }
+
+    Ok(())
 }
 
 fn handle_broadcast_queue(
@@ -99,11 +128,7 @@ fn handle_broadcast_queue(
         }
 
         let message = the_messages.remove(0);
-        let mut the_clients = clients.write()?;
-
-        for writer in the_clients.iter_mut() {
-            writer.write(&message)?;
-        }
+        send_broadcast(&message, clients.clone())?;
     }
 }
 
@@ -124,11 +149,24 @@ fn handle_connection() -> Result<()> {
         let connection = ServerSideConnection::new(incomming?)?;
 
         let new_names = names.clone();
+        let new_clients = clients.clone();
         let new_messages = messages.clone();
 
         let reader = connection.reader;
 
-        thread::spawn(|| handle_client_messages(reader, new_names, new_messages));
+        let time = chrono::Utc::now();
+        let name = reader.get_name(names.clone())?;
+
+        println!("<{}> New user > {}", &time, &name);
+
+        let greeting = ServerMessage::NewUser {
+            name: name,
+            time: time.into()
+        };
+
+        send_broadcast(&greeting, clients.clone())?;
+
+        thread::spawn(|| handle_client_messages(reader, new_names, new_clients, new_messages));
 
         clients.write()?.push(connection.writer);
     }
