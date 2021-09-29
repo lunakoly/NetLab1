@@ -41,6 +41,7 @@ fn handle_input(
                 let response = ServerMessage::Text {
                     name: name,
                     text: text,
+                    time: time.into()
                 };
 
                 messages.write()?.push(response);
