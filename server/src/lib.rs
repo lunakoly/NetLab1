@@ -177,7 +177,7 @@ fn handle_connection() -> Result<()> {
         let time = chrono::Utc::now();
         let name = reader.get_name(names.clone())?;
 
-        println!("<{}> New user > {}", &time, &name);
+        println!("<{}> New User > {}", &time, &name);
 
         let greeting = ServerMessage::NewUser {
             name: name,
