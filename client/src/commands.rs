@@ -27,6 +27,7 @@ fn parse_rename(words: &[String]) -> Command {
             new_name: words[1].clone(),
         }
     } else {
+        println!("(Console) Rename to who? Vasya, Petia - who exactly?");
         Command::Nothing
     }
 }
@@ -56,14 +57,14 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     let words = parse_words(input);
 
     if words[0] == "/" {
-        println!("Nooooooo, you can't put a blank symbol after the '/'!!!!!!");
+        println!("(Console) Nooooooo, you can't just put a blank symbol after the '/'!!!!!!");
         Command::Nothing
     } else if words[0] == "/q" || words[0] == "/quit" || words[0] == "/exit" {
         Command::End
     } else if words[0] == "/rename" {
         parse_rename(&words)
     } else {
-        println!("Well, yea, you issued a command, but I missed it, sorry...");
+        println!("(Console) Well, yea, you issued a command, but I missed it, sorry...");
         Command::Nothing
     }
 }
