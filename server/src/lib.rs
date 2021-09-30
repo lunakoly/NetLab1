@@ -2,7 +2,7 @@ use std::net::{TcpListener, TcpStream, SocketAddr};
 
 use shared::{Result, with_error_report, ErrorKind};
 
-use shared::helpers::{NamesMap, SafeVec};
+use shared::helpers::{NamesMap};
 
 use shared::communication::{
     ReadMessage,
@@ -30,7 +30,6 @@ fn handle_client_mesage(
     reader: &mut XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
     clients: WritingKnot<TcpStream, ServerMessage>,
-    messages: SafeVec<ServerMessage>,
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = reader.get_name(names.clone())?;
@@ -47,7 +46,7 @@ fn handle_client_mesage(
                     time: time.into()
                 };
 
-                messages.write()?.push(response);
+                send_broadcast(&response, clients.clone())?;
             }
 
             return Ok(MessageProcessing::Stop)
@@ -64,7 +63,7 @@ fn handle_client_mesage(
                 time: time.into()
             };
 
-            messages.write()?.push(response);
+            send_broadcast(&response, clients.clone())?;
         }
         ClientMessage::Leave => {
             println!("<{}> User Leaves > {}", &time, &name);
@@ -74,7 +73,7 @@ fn handle_client_mesage(
                 time: time.into()
             };
 
-            messages.write()?.push(response);
+            send_broadcast(&response, clients.clone())?;
             return Ok(MessageProcessing::Stop)
         }
         ClientMessage::Rename { new_name } => {
@@ -96,7 +95,7 @@ fn handle_client_mesage(
                     new_name: new_name,
                 };
 
-                messages.write()?.push(response);
+                send_broadcast(&response, clients.clone())?;
                 return Ok(MessageProcessing::Proceed)
             }
 
@@ -159,14 +158,12 @@ fn handle_client_messages(
     mut reader: XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
     clients: WritingKnot<TcpStream, ServerMessage>,
-    messages: SafeVec<ServerMessage>,
 ) -> Result<()> {
     loop {
         let result = handle_client_mesage(
             &mut reader,
             names.clone(),
             clients.clone(),
-            messages.clone()
         )?;
 
         if let MessageProcessing::Stop = &result {
@@ -202,35 +199,9 @@ fn send_broadcast(
     Ok(())
 }
 
-fn handle_broadcast_queue(
-    clients: WritingKnot<TcpStream, ServerMessage>,
-    messages: SafeVec<ServerMessage>,
-) -> Result<()> {
-    loop {
-        thread::sleep(std::time::Duration::from_millis(16));
-
-        let mut the_messages = messages.write()?;
-
-        if the_messages.is_empty() {
-            continue
-        }
-
-        let message = the_messages.remove(0);
-        send_broadcast(&message, clients.clone())?;
-    }
-}
-
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
-
     let clients = Arc::new(RwLock::new(vec![]));
-    let messages = Arc::new(RwLock::new(vec![]));
-
-    let new_clients = clients.clone();
-    let new_messages = messages.clone();
-
-    thread::spawn(|| handle_broadcast_queue(new_clients, new_messages));
-
     let listener = TcpListener::bind("127.0.0.1:6969")?;
 
     for incomming in listener.incoming() {
@@ -238,7 +209,6 @@ fn handle_connection() -> Result<()> {
 
         let new_names = names.clone();
         let new_clients = clients.clone();
-        let new_messages = messages.clone();
 
         let reader = connection.reader;
 
@@ -254,7 +224,7 @@ fn handle_connection() -> Result<()> {
 
         send_broadcast(&greeting, clients.clone())?;
 
-        thread::spawn(|| handle_client_messages(reader, new_names, new_clients, new_messages));
+        thread::spawn(|| handle_client_messages(reader, new_names, new_clients));
 
         clients.write()?.push(connection.writer);
     }

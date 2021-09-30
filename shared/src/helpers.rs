@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::{Result};
 
 use std::str::{from_utf8, from_utf8_unchecked};
