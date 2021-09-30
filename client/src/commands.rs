@@ -26,7 +26,7 @@ fn parse_rename(words: &[String]) -> Command {
     }
 }
 
-fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
+fn parse_words<'a>(input: &mut Peekable<CharsReader<'a>>) -> Vec<String> {
     let mut words = vec!["".to_owned()];
 
     while let Some(it) = input.next() {
@@ -44,9 +44,17 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
         }
     }
 
+    words
+}
+
+fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
+    let words = parse_words(input);
+
     if words[0] == "/" {
         println!("Nooooooo, you can't put a blank symbol after the '/'!!!!!!");
         Command::Nothing
+    } else if words[0] == "/q" || words[0] == "/quit" || words[0] == "/exit" {
+        Command::End
     } else if words[0] == "/rename" {
         parse_rename(&words)
     } else {
