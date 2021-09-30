@@ -165,12 +165,6 @@ pub trait Connection {
         let address = self.get_remote_address()?.to_string();
         get_name(names, address)
     }
-
-    fn get_personality_prefix(&self, names: NamesMap) -> Result<String> {
-        let name = self.get_name(names)?;
-        let time = chrono::Utc::now();
-        Ok(format!("<{}> [{}] ", time, name))
-    }
 }
 
 impl<M> Connection for XXsonWriter<TcpStream, M> {
