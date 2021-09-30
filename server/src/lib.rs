@@ -7,7 +7,8 @@ use shared::helpers::{NamesMap, SafeVec};
 use shared::communication::{
     ReadMessage,
     WriteMessage,
-    try_explain_common_error,
+    explain_common_error,
+    MessageProcessing,
 };
 
 use shared::communication::xxson::{
@@ -25,87 +26,101 @@ use std::collections::HashMap;
 
 use std::thread;
 
-// TODO: review
-/// Returns true if the user's leaving.
-fn handle_input(
+fn handle_client_mesage(
     reader: &mut XXsonReader<TcpStream, ClientMessage>,
     names: NamesMap,
     clients: WritingKnot<TcpStream, ServerMessage>,
     messages: SafeVec<ServerMessage>,
-) -> Result<bool> {
+) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = reader.get_name(names.clone())?;
 
-    match reader.read() {
-        Ok(value) => match value {
-            ClientMessage::Text { text } => {
-                println!("<{}> Message > {} > {}", &time, &name, &text);
+    let message = match reader.read() {
+        Ok(it) => it,
+        Err(error) => {
+            let explaination = explain_common_error(&error);
+            println!("<{}> Error > {} > {}", &time, &name, &explaination);
 
-                let response = ServerMessage::Text {
+            if let ErrorKind::NothingToRead = error.kind {
+                let response = ServerMessage::Interrupt {
                     name: name,
-                    text: text,
                     time: time.into()
                 };
 
                 messages.write()?.push(response);
-                Ok(false)
             }
-            ClientMessage::Leave => {
-                Ok(true)
-            }
-            ClientMessage::Rename { new_name } => {
-                let mut the_names = names.write()?;
-                let address = reader.get_remote_address()?.to_string();
-                let name_is_free = the_names.values().all(|it| it != &new_name);
 
-                if name_is_free {
-                    let old_name = if the_names.contains_key(&address) {
-                        the_names[&address].clone()
-                    } else {
-                        address.clone()
-                    };
-
-                    the_names.insert(address.clone(), new_name.clone());
-
-                    let response = ServerMessage::UserRenamed {
-                        old_name: old_name,
-                        new_name: new_name,
-                    };
-
-                    messages.write()?.push(response);
-                    return Ok(false)
-                }
-
-                let index = find_writer_with_address(
-                    reader.get_remote_address()?,
-                    clients.clone()
-                )?;
-
-                let mut the_clients = clients.write()?;
-
-                let writer = match index {
-                    Some(it) => &mut the_clients[it],
-                    None => return Ok(true)
-                };
-
-                let message = ServerMessage::Support {
-                    text: "This name has already been taken, choose another one".to_owned()
-                };
-
-                writer.write(&message)?;
-                Ok(false)
-            }
+            return Ok(MessageProcessing::Stop)
         }
-        Err(error) => {
-            let explaination = match try_explain_common_error(&error) {
-                Some(thing) => thing,
-                None => format!("{}", error)
+    };
+
+    match message {
+        ClientMessage::Text { text } => {
+            println!("<{}> Message > {} > {}", &time, &name, &text);
+
+            let response = ServerMessage::Text {
+                name: name,
+                text: text,
+                time: time.into()
             };
 
-            println!("<{}> Error > {} > {}", &time, &name, &explaination);
-            Err(error)
+            messages.write()?.push(response);
+        }
+        ClientMessage::Leave => {
+            println!("<{}> User Leaves > {}", &time, &name);
+
+            let response = ServerMessage::UserLeaves {
+                name: name,
+                time: time.into()
+            };
+
+            messages.write()?.push(response);
+            return Ok(MessageProcessing::Stop)
+        }
+        ClientMessage::Rename { new_name } => {
+            let mut the_names = names.write()?;
+            let address = reader.get_remote_address()?.to_string();
+            let name_is_free = the_names.values().all(|it| it != &new_name);
+
+            if name_is_free {
+                let old_name = if the_names.contains_key(&address) {
+                    the_names[&address].clone()
+                } else {
+                    address.clone()
+                };
+
+                the_names.insert(address.clone(), new_name.clone());
+
+                let response = ServerMessage::UserRenamed {
+                    old_name: old_name,
+                    new_name: new_name,
+                };
+
+                messages.write()?.push(response);
+                return Ok(MessageProcessing::Proceed)
+            }
+
+            let index = find_writer_with_address(
+                reader.get_remote_address()?,
+                clients.clone()
+            )?;
+
+            let mut the_clients = clients.write()?;
+
+            let writer = match index {
+                Some(it) => &mut the_clients[it],
+                None => return Ok(MessageProcessing::Stop)
+            };
+
+            let message = ServerMessage::Support {
+                text: "This name has already been taken, choose another one".to_owned()
+            };
+
+            writer.write(&message)?;
         }
     }
+
+    Ok(MessageProcessing::Proceed)
 }
 
 fn find_writer_with_address(
@@ -147,41 +162,16 @@ fn handle_client_messages(
     messages: SafeVec<ServerMessage>,
 ) -> Result<()> {
     loop {
-        let result = handle_input(&mut reader, names.clone(), clients.clone(), messages.clone());
+        let result = handle_client_mesage(
+            &mut reader,
+            names.clone(),
+            clients.clone(),
+            messages.clone()
+        )?;
 
-        match result {
-            Ok(true) => {
-                let time = chrono::Utc::now();
-                let name = reader.get_name(names)?;
-
-                println!("<{}> User Leaves > {}", &time, &name);
-                remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
-
-                let response = ServerMessage::UserLeaves {
-                    name: name,
-                    time: time.into()
-                };
-
-                messages.write()?.push(response);
-                break
-            }
-            Err(error) => {
-                if let ErrorKind::NothingToRead = error.kind {
-                    let time = chrono::Utc::now();
-                    let name = reader.get_name(names)?;
-
-                    let response = ServerMessage::Interrupt {
-                        name: name,
-                        time: time.into()
-                    };
-
-                    messages.write()?.push(response);
-                }
-
-                remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
-                break
-            }
-            _ => {}
+        if let MessageProcessing::Stop = &result {
+            remove_writer_with_address(reader.get_remote_address()?, clients.clone())?;
+            break
         }
     }
 

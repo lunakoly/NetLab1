@@ -12,16 +12,21 @@ pub trait WriteMessage<M> {
     fn write(&mut self, message: M) -> Result<()>;
 }
 
-pub fn try_explain_common_error(error: &Error) -> Option<String> {
+pub fn explain_common_error(error: &Error) -> String {
     match &error.kind {
         ErrorKind::Io { source: io_error } => match io_error.kind() {
             // This particular error has a very
             // specific meaning in terms of communication
             std::io::ErrorKind::InvalidData => {
-                Some("Too much data for a single message, disconnecting".to_owned())
+                "Too much data for a single message, disconnecting".to_owned()
             }
-            _ => None
+            _ => format!("{}", error)
         }
-        _ => None
+        _ => format!("{}", error)
     }
+}
+
+pub enum MessageProcessing {
+    Proceed,
+    Stop,
 }

@@ -5,8 +5,13 @@ use crate::chars_reader::CharsReader;
 pub enum Command {
     Nothing,
     End,
-    Message { text: String },
+    Text { text: String },
     Rename { new_name: String },
+}
+
+pub enum CommandProcessing {
+    Proceed,
+    Stop,
 }
 
 fn is_blank(symbol: char) -> bool {
@@ -63,7 +68,7 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     }
 }
 
-fn parse_message<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
+fn parse_text<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     let mut line = String::new();
 
     while let Some(it) = input.next() {
@@ -79,7 +84,7 @@ fn parse_message<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     if line.is_empty() {
         Command::Nothing
     } else {
-        Command::Message {
+        Command::Text {
             text: line,
         }
     }
@@ -89,7 +94,7 @@ pub fn parse<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     if input.peek() == Some(&'/') {
         parse_command(input)
     } else if let Some(_) = input.peek() {
-        parse_message(input)
+        parse_text(input)
     } else {
         Command::End
     }

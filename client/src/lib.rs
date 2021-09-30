@@ -15,40 +15,43 @@ use shared::communication::xxson::{
 use shared::communication::{
     ReadMessage,
     WriteMessage,
-    try_explain_common_error,
+    explain_common_error,
+    MessageProcessing,
 };
 
-use chars_reader::{IntoCharsReader};
+use chars_reader::{IntoCharsReader, CharsReader};
 
 use std::net::TcpStream;
 
 use std::io::{BufRead};
 
-fn handle_server_input(
-    reader: &mut XXsonReader<TcpStream, ServerMessage>,
-) -> Result<()> {
-    match reader.read() {
-        Ok(value) => {
-            println!("{}", value.visualize(reader)?);
-            Ok(())
-        }
-        Err(error) => {
-            let explaination = match try_explain_common_error(&error) {
-                Some(thing) => thing,
-                None => format!("{}", error)
-            };
+use std::iter::Peekable;
 
+use commands::{Command, CommandProcessing};
+
+fn handle_server_message(
+    reader: &mut XXsonReader<TcpStream, ServerMessage>,
+) -> Result<MessageProcessing> {
+    let message = match reader.read() {
+        Ok(it) => it,
+        Err(error) => {
+            let explaination = explain_common_error(&error);
             println!("[Server] Error > {}", &explaination);
-            Err(error)
+            return Ok(MessageProcessing::Stop)
         }
-    }
+    };
+
+    println!("{}", message.visualize(reader)?);
+    Ok(MessageProcessing::Proceed)
 }
 
 fn handle_server_messages(
     mut reader: XXsonReader<TcpStream, ServerMessage>,
 ) -> Result<()> {
     loop {
-        if let Err(..) = handle_server_input(&mut reader) {
+        let result = handle_server_message(&mut reader)?;
+
+        if let MessageProcessing::Stop = &result {
             break
         }
     }
@@ -56,7 +59,35 @@ fn handle_server_messages(
     Ok(())
 }
 
-fn handle_user_input(
+fn handle_user_command(
+    writer: &mut XXsonWriter<TcpStream, ClientMessage>,
+    reader: &mut Peekable<CharsReader>,
+) -> Result<CommandProcessing> {
+    match commands::parse(reader) {
+        Command::Text { text } => {
+            let message = ClientMessage::Text {
+                text: text,
+            };
+
+            writer.write(&message)?;
+        }
+        Command::End => {
+            return Ok(CommandProcessing::Stop)
+        }
+        Command::Rename { new_name } => {
+            let message = ClientMessage::Rename {
+                new_name: new_name,
+            };
+
+            writer.write(&message)?;
+        }
+        Command::Nothing => {}
+    }
+
+    Ok(CommandProcessing::Proceed)
+}
+
+fn handle_user_commands(
     mut writer: XXsonWriter<TcpStream, ClientMessage>,
 ) -> Result<()> {
     let stdin = std::io::stdin();
@@ -64,33 +95,14 @@ fn handle_user_input(
     let mut reader = lock.chars().peekable();
 
     loop {
-        match commands::parse(&mut reader) {
-            commands::Command::Message { text } => {
-                let message = ClientMessage::Text {
-                    text: text,
-                };
+        let result = handle_user_command(&mut writer, &mut reader)?;
 
-                writer.write(&message)?;
-            }
-            commands::Command::End => {
-                // TODO: review
-                // During Ctrl-C (at least on Win) this
-                // is executed:
-                writer.write(&ClientMessage::Leave)?;
-                // But this is not, the program shuts down
-                break
-            }
-            commands::Command::Rename { new_name } => {
-                let message = ClientMessage::Rename {
-                    new_name: new_name,
-                };
-
-                writer.write(&message)?;
-            }
-            commands::Command::Nothing => {}
+        if let CommandProcessing::Stop = &result {
+            break
         }
     }
 
+    writer.write(&ClientMessage::Leave)?;
     Ok(())
 }
 
@@ -101,7 +113,7 @@ fn handle_connection() -> Result<()> {
 
     std::thread::spawn(|| handle_server_messages(reader));
 
-    handle_user_input(connection.writer)?;
+    handle_user_commands(connection.writer)?;
     Ok(())
 }
 
