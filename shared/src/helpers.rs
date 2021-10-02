@@ -3,10 +3,8 @@
 use crate::{Result};
 
 use std::str::{from_utf8, from_utf8_unchecked};
-
-use std::sync::{Arc, RwLock};
-
-use std::collections::HashMap;
+use std::net::{TcpStream};
+use std::cell::{RefCell};
 
 pub fn from_utf8_forced(buffer: &[u8]) -> &str {
     match from_utf8(&buffer) {
@@ -17,18 +15,27 @@ pub fn from_utf8_forced(buffer: &[u8]) -> &str {
     }
 }
 
-pub type NamesMap = Arc<RwLock<HashMap<String, String>>>;
-
-pub fn get_name(names: NamesMap, address: String) -> Result<String> {
-    let it = names.read()?;
-
-    let proper = if it.contains_key(&address) {
-        it[&address].clone()
-    } else {
-        address
-    };
-
-    Ok(proper)
+pub trait TcpSplit {
+    fn split(self) -> Result<(TcpStream, TcpStream)>;
+    fn split_to_refcells(self) -> Result<(RefCell<TcpStream>, RefCell<TcpStream>)>;
 }
 
-pub type SafeVec<T> = Arc<RwLock<Vec<T>>>;
+impl TcpSplit for TcpStream {
+    fn split(self) -> Result<(TcpStream, TcpStream)> {
+        Ok((self.try_clone()?, self))
+    }
+
+    fn split_to_refcells(self) -> Result<(RefCell<TcpStream>, RefCell<TcpStream>)> {
+        let (writing, reading) = self.split()?;
+        Ok((RefCell::new(writing), RefCell::new(reading)))
+    }
+}
+
+pub fn with_refcell<F, V, T>(value: V, run: F) -> Result<(V, T)>
+where
+    F: FnOnce(&RefCell<V>) -> Result<T>
+{
+    let wrapped = RefCell::new(value);
+    let result = run(&wrapped)?;
+    Ok((wrapped.into_inner(), result))
+}

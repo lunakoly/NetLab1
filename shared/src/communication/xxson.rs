@@ -1,22 +1,15 @@
-use crate::{ErrorKind, Result};
-use crate::helpers::{NamesMap, get_name};
-use crate::communication::{ReadMessage, WriteMessage};
-use crate::communication::bson::{BsonReader, BsonWriter};
-
-use crate::capped_reader::{
-    CappedReader,
-    IntoCappedReader,
-};
+pub mod connection;
 
 use std::io::{Read, Write};
+use std::marker::{PhantomData};
+use std::fmt::{Display, Formatter};
 
-use std::net::{TcpStream, SocketAddr};
+use crate::{ErrorKind, Result};
+use crate::communication::{ReadMessage, WriteMessage};
+use crate::communication::bson::{BsonReader, BsonWriter};
+use crate::capped_reader::{CappedReader};
 
 use serde::{Serialize, Deserialize};
-
-use std::marker::PhantomData;
-
-use std::sync::{Arc, RwLock};
 
 use bson::doc;
 
@@ -95,9 +88,7 @@ impl<W, M> XXsonWriter<W, M> {
     }
 }
 
-pub type WritingKnot<W, M> = Arc<RwLock<Vec<XXsonWriter<W, M>>>>;
-
-impl<W: Write> WriteMessage<&ClientMessage> for XXsonWriter<W, ClientMessage> {
+impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage> {
     fn write(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -115,7 +106,7 @@ impl<W: Write> WriteMessage<&ClientMessage> for XXsonWriter<W, ClientMessage> {
     }
 }
 
-impl<W: Write> WriteMessage<&ServerMessage> for XXsonWriter<W, ServerMessage> {
+impl<W: Write> WriteMessage<ServerMessage> for XXsonWriter<W, ServerMessage> {
     fn write(&mut self, message: &ServerMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -126,99 +117,28 @@ impl<W: Write> WriteMessage<&ServerMessage> for XXsonWriter<W, ServerMessage> {
     }
 }
 
-pub struct ClientSideConnection {
-    pub writer: XXsonWriter<TcpStream, ClientMessage>,
-    pub reader: XXsonReader<TcpStream, ServerMessage>,
-}
-
-pub struct ServerSideConnection {
-    pub writer: XXsonWriter<TcpStream, ServerMessage>,
-    pub reader: XXsonReader<TcpStream, ClientMessage>,
-}
-
-impl ClientSideConnection {
-    pub fn new(stream: TcpStream) -> Result<ClientSideConnection> {
-        let connection = ClientSideConnection {
-            writer: XXsonWriter::new(stream.try_clone()?),
-            reader: XXsonReader::new(stream.capped()),
-        };
-
-        Ok(connection)
-    }
-}
-
-impl ServerSideConnection {
-    pub fn new(stream: TcpStream) -> Result<ServerSideConnection> {
-        let connection = ServerSideConnection {
-            writer: XXsonWriter::new(stream.try_clone()?),
-            reader: XXsonReader::new(stream.capped()),
-        };
-
-        Ok(connection)
-    }
-}
-
-pub trait Connection {
-    fn get_remote_address(&self) -> Result<SocketAddr>;
-
-    fn get_name(&self, names: NamesMap) -> Result<String> {
-        let address = self.get_remote_address()?.to_string();
-        get_name(names, address)
-    }
-}
-
-impl<M> Connection for XXsonWriter<TcpStream, M> {
-    fn get_remote_address(&self) -> Result<SocketAddr> {
-        Ok(self.backend.stream.peer_addr()?)
-    }
-}
-
-impl<M> Connection for XXsonReader<TcpStream, M> {
-    fn get_remote_address(&self) -> Result<SocketAddr> {
-        Ok(self.backend.stream.stream.peer_addr()?)
-    }
-}
-
-impl Connection for ClientSideConnection {
-    fn get_remote_address(&self) -> Result<SocketAddr> {
-        self.writer.get_remote_address()
-    }
-}
-
-impl Connection for ServerSideConnection {
-    fn get_remote_address(&self) -> Result<SocketAddr> {
-        self.writer.get_remote_address()
-    }
-}
-
-pub trait VisualizeServerMessage {
-    fn visualize(&self, connection: &dyn Connection) -> Result<String>;
-}
-
-impl VisualizeServerMessage for ServerMessage {
-    fn visualize(&self, _: &dyn Connection) -> Result<String> {
-        let text = match self {
+impl Display for ServerMessage {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match self {
             ServerMessage::Text { text, name, time } => {
                 let the_time = time.to_chrono();
-                format!("<{}> [{}] {}", the_time, name, text)
+                write!(formatter, "<{}> [{}] {}", the_time, name, text)
             }
             ServerMessage::NewUser { name, .. } => {
-                format!("~~ Meat our new mate: {} ~~", name)
+                write!(formatter, "~~ Meet our new mate: {} ~~", name)
             }
             ServerMessage::Interrupt { name, .. } => {
-                format!("~~ Oh no, we've lost {} ~~", name)
+                write!(formatter, "~~ Press F, {} ~~", name)
             }
             ServerMessage::UserLeaves { name, .. } => {
-                format!("~~ {} leaves the party ~~", name)
+                write!(formatter, "~~ {} leaves the party ~~", name)
             }
             ServerMessage::Support { text } => {
-                format!("(Server) {}", &text)
+                write!(formatter, "(Server) {}", &text)
             }
             ServerMessage::UserRenamed { old_name, new_name } => {
-                format!("~~ He once used to be {}, but now he is {} ~~", &old_name, &new_name)
+                write!(formatter, "~~ He once used to be {}, but now he is {} ~~", &old_name, &new_name)
             }
-        };
-
-        Ok(text)
+        }
     }
 }

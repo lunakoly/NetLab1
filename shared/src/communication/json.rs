@@ -49,7 +49,7 @@ impl<W> JsonWriter<W> {
     }
 }
 
-impl<W: Write> WriteMessage<&Value> for JsonWriter<W> {
+impl<W: Write> WriteMessage<Value> for JsonWriter<W> {
     fn write(&mut self, message: &Value) -> Result<()> {
         self.stream.write(message.to_string().as_bytes())?;
         self.stream.flush()?;

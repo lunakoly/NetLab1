@@ -1,38 +1,39 @@
 mod chars_reader;
 mod commands;
 
+use std::io::{BufRead};
+use std::iter::Peekable;
+use std::cell::{RefCell};
+use std::net::{TcpStream};
+
 use shared::{Result, with_error_report};
+use shared::helpers::{TcpSplit};
 
 use shared::communication::xxson::{
-    ClientSideConnection,
     ClientMessage,
-    ServerMessage,
-    VisualizeServerMessage,
-    XXsonReader,
-    XXsonWriter,
+};
+
+use shared::communication::xxson::connection::{
+    ClientReadingConnection,
+    ClientWritingConnection,
+    ClientReadingContext,
+    ClientWritingContext,
 };
 
 use shared::communication::{
-    ReadMessage,
     WriteMessage,
     explain_common_error,
     MessageProcessing,
 };
 
 use chars_reader::{IntoCharsReader, CharsReader};
-
-use std::net::TcpStream;
-
-use std::io::{BufRead};
-
-use std::iter::Peekable;
-
 use commands::{Command, CommandProcessing};
 
-fn handle_server_message(
-    reader: &mut XXsonReader<TcpStream, ServerMessage>,
-) -> Result<MessageProcessing> {
-    let message = match reader.read() {
+fn handle_server_message<C>(connection: &mut C) -> Result<MessageProcessing>
+where
+    C: ClientReadingConnection
+{
+    let message = match connection.read() {
         Ok(it) => it,
         Err(error) => {
             let explaination = explain_common_error(&error);
@@ -41,15 +42,15 @@ fn handle_server_message(
         }
     };
 
-    println!("{}", message.visualize(reader)?);
+    println!("{}", message);
     Ok(MessageProcessing::Proceed)
 }
 
-fn handle_server_messages(
-    mut reader: XXsonReader<TcpStream, ServerMessage>,
-) -> Result<()> {
+fn handle_server_messages(stream: RefCell<TcpStream>) -> Result<()> {
+    let mut connection = ClientReadingContext::new(&stream);
+
     loop {
-        let result = handle_server_message(&mut reader)?;
+        let result = handle_server_message(&mut connection)?;
 
         if let MessageProcessing::Stop = &result {
             break
@@ -59,17 +60,20 @@ fn handle_server_messages(
     Ok(())
 }
 
-fn handle_user_command(
-    writer: &mut XXsonWriter<TcpStream, ClientMessage>,
+fn handle_user_command<C>(
+    connection: &mut C,
     reader: &mut Peekable<CharsReader>,
-) -> Result<CommandProcessing> {
+) -> Result<CommandProcessing>
+where
+    C: ClientWritingConnection
+{
     match commands::parse(reader) {
         Command::Text { text } => {
             let message = ClientMessage::Text {
                 text: text,
             };
 
-            writer.write(&message)?;
+            connection.write(&message)?;
         }
         Command::End => {
             return Ok(CommandProcessing::Stop)
@@ -79,7 +83,7 @@ fn handle_user_command(
                 new_name: new_name,
             };
 
-            writer.write(&message)?;
+            connection.write(&message)?;
         }
         Command::Nothing => {}
     }
@@ -87,33 +91,33 @@ fn handle_user_command(
     Ok(CommandProcessing::Proceed)
 }
 
-fn handle_user_commands(
-    mut writer: XXsonWriter<TcpStream, ClientMessage>,
-) -> Result<()> {
+fn handle_user_commands(stream: RefCell<TcpStream>) -> Result<()> {
+    let mut connection = ClientWritingContext::new(&stream);
+
     let stdin = std::io::stdin();
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
 
     loop {
-        let result = handle_user_command(&mut writer, &mut reader)?;
+        let result = handle_user_command(&mut connection, &mut reader)?;
 
         if let CommandProcessing::Stop = &result {
             break
         }
     }
 
-    writer.write(&ClientMessage::Leave)?;
+    connection.write(&ClientMessage::Leave)?;
     Ok(())
 }
 
 fn handle_connection() -> Result<()> {
-    let stream = TcpStream::connect("127.0.0.1:6969")?;
-    let connection = ClientSideConnection::new(stream)?;
-    let reader = connection.reader;
+    let (writing_stream, reading_stream) = TcpStream::connect("127.0.0.1:6969")?.split_to_refcells()?;
 
-    std::thread::spawn(|| handle_server_messages(reader));
+    std::thread::spawn(|| {
+        with_error_report(|| handle_server_messages(reading_stream))
+    });
 
-    handle_user_commands(connection.writer)?;
+    handle_user_commands(writing_stream)?;
     Ok(())
 }
 

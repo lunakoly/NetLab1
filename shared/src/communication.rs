@@ -9,7 +9,7 @@ pub trait ReadMessage<M> {
 }
 
 pub trait WriteMessage<M> {
-    fn write(&mut self, message: M) -> Result<()>;
+    fn write(&mut self, message: &M) -> Result<()>;
 }
 
 pub fn explain_common_error(error: &Error) -> String {

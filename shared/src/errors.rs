@@ -9,6 +9,7 @@ pub enum ErrorKind {
     ConversionBson { source: bson::document::ValueAccessError },
     MalformedMessage { message: String },
     PoisonedLock { message: String },
+    NoWritingStreamFound { address: String },
 }
 
 impl std::fmt::Display for ErrorKind {
@@ -40,6 +41,9 @@ impl std::fmt::Display for ErrorKind {
             }
             ErrorKind::PoisonedLock { message } => {
                 write!(formatter, "Ran into a poisoned lock > {}", message)
+            }
+            ErrorKind::NoWritingStreamFound { address } => {
+                write!(formatter, "Couldn't find the writing stream for the corresponding user > {}", address)
             }
         }
     }

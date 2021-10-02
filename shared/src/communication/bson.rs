@@ -71,7 +71,7 @@ impl<W> BsonWriter<W> {
     }
 }
 
-impl<W: Write> WriteMessage<&Document> for BsonWriter<W> {
+impl<W: Write> WriteMessage<Document> for BsonWriter<W> {
     fn write(&mut self, message: &Document) -> Result<()> {
         // Idk, but &mut [0u8; N] doesn't work here,
         // it simply stays filled with 0
