@@ -1,8 +1,8 @@
+use std::io::{Read, Write};
+
 use crate::{ErrorKind, Result};
 use crate::capped_reader::{CappedReader, CappedRead};
 use crate::communication::{ReadMessage, WriteMessage};
-
-use std::io::{Read, Write};
 
 use serde_json::{Deserializer, Value};
 

@@ -1,6 +1,5 @@
 use std::io::{Read, Write};
-
-use std::cell::RefCell;
+use std::cell::{RefCell};
 
 pub struct RefCellStream<'a, R> {
     pub backend: &'a RefCell<R>,

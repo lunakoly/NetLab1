@@ -1,3 +1,5 @@
+use std::io::{Read, Write};
+
 use crate::{ErrorKind, Result};
 use crate::communication::{ReadMessage, WriteMessage};
 
@@ -5,8 +7,6 @@ use crate::capped_reader::{
     CappedReader,
     CappedRead,
 };
-
-use std::io::{Read, Write};
 
 use bson::Document;
 

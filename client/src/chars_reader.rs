@@ -1,10 +1,8 @@
-use shared::helpers;
-
 use std::option::Option;
-
 use std::str::Chars;
-
 use std::io::BufRead;
+
+use shared::helpers;
 
 pub struct CharsReader<'a> {
     stream: &'a mut dyn BufRead,

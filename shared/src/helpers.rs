@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use crate::{Result};
-
 use std::str::{from_utf8, from_utf8_unchecked};
 use std::net::{TcpStream};
 use std::cell::{RefCell};
+
+use crate::{Result};
 
 pub fn from_utf8_forced(buffer: &[u8]) -> &str {
     match from_utf8(&buffer) {

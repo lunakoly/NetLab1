@@ -1,8 +1,8 @@
-use std::iter::Peekable;
+use std::iter::{Peekable};
 use std::net::{TcpStream};
 use std::cell::{RefCell};
 
-use crate::chars_reader::CharsReader;
+use crate::chars_reader::{CharsReader};
 
 use shared::communication::{DEFAULT_PORT};
 

@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read};
 
 pub trait CappedRead: Read {
     fn clear(&mut self);
