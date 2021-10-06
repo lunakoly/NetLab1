@@ -48,8 +48,9 @@ fn parse_connect(words: &[String]) -> Command {
             address: format!("{}:{}", words[1], DEFAULT_PORT),
         }
     } else {
-        println!("(Console) Ok, hacking the Pentagon... what? You didn't want connecting to the Pentagon? Well, I thought you did... you didn't really specify any address and maybe a port separated by a space");
-        Command::Nothing
+        Command::Connect {
+            address: format!("localhost:{}", DEFAULT_PORT),
+        }
     }
 }
 
@@ -84,7 +85,7 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
         Command::End
     } else if words[0] == "/rename" {
         parse_rename(&words)
-    } else if words[0] == "/connect" {
+    } else if words[0] == "/connect" || words[0] == "/c" {
         parse_connect(&words)
     } else {
         println!("(Console) Well, yea, you issued a command, but I missed it, sorry...");
