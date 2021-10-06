@@ -37,7 +37,7 @@ where
         Ok(it) => it,
         Err(error) => {
             let explaination = explain_common_error(&error);
-            println!("[Server] Error > {}", &explaination);
+            println!("(Server) Error > {}", &explaination);
             return Ok(MessageProcessing::Stop)
         }
     };
