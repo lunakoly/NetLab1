@@ -1,17 +1,23 @@
 use std::iter::Peekable;
+use std::net::{TcpStream};
+use std::cell::{RefCell};
 
 use crate::chars_reader::CharsReader;
+
+use shared::communication::{DEFAULT_PORT};
 
 pub enum Command {
     Nothing,
     End,
     Text { text: String },
     Rename { new_name: String },
+    Connect { address: String },
 }
 
 pub enum CommandProcessing {
     Proceed,
     Stop,
+    Connect(RefCell<TcpStream>)
 }
 
 fn is_blank(symbol: char) -> bool {
@@ -28,6 +34,21 @@ fn parse_rename(words: &[String]) -> Command {
         }
     } else {
         println!("(Console) Rename to who? Vasya, Petia - who exactly?");
+        Command::Nothing
+    }
+}
+
+fn parse_connect(words: &[String]) -> Command {
+    if words.len() >= 3 {
+        Command::Connect {
+            address: format!("{}:{}", words[1], words[2])
+        }
+    } else if words.len() >= 2 {
+        Command::Connect {
+            address: format!("{}:{}", words[1], DEFAULT_PORT),
+        }
+    } else {
+        println!("(Console) Ok, hacking the Pentagon... what? You didn't want connecting to the Pentagon? Well, I thought you did... you didn't really specify any address and maybe a port separated by a space");
         Command::Nothing
     }
 }
@@ -63,6 +84,8 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
         Command::End
     } else if words[0] == "/rename" {
         parse_rename(&words)
+    } else if words[0] == "/connect" {
+        parse_connect(&words)
     } else {
         println!("(Console) Well, yea, you issued a command, but I missed it, sorry...");
         Command::Nothing

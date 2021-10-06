@@ -4,6 +4,8 @@ pub mod xxson;
 
 use crate::{Result, Error, ErrorKind};
 
+pub const DEFAULT_PORT: u32 = 6969;
+
 pub trait ReadMessage<M> {
     fn read(&mut self) -> Result<M>;
 }

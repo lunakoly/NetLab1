@@ -60,23 +60,20 @@ fn handle_server_messages(stream: RefCell<TcpStream>) -> Result<()> {
     Ok(())
 }
 
-fn handle_user_command<C>(
+fn match_user_command_with_connection<C>(
+    command: Command,
     connection: &mut C,
-    reader: &mut Peekable<CharsReader>,
 ) -> Result<CommandProcessing>
 where
     C: ClientWritingConnection
 {
-    match commands::parse(reader) {
+    match command {
         Command::Text { text } => {
             let message = ClientMessage::Text {
                 text: text,
             };
 
             connection.write(&message)?;
-        }
-        Command::End => {
-            return Ok(CommandProcessing::Stop)
         }
         Command::Rename { new_name } => {
             let message = ClientMessage::Rename {
@@ -85,40 +82,77 @@ where
 
             connection.write(&message)?;
         }
-        Command::Nothing => {}
+        _ => {}
     }
 
     Ok(CommandProcessing::Proceed)
 }
 
-fn handle_user_commands(stream: RefCell<TcpStream>) -> Result<()> {
-    let mut connection = ClientWritingContext::new(&stream);
+fn handle_user_command<C>(
+    connection: &mut Option<C>,
+    reader: &mut Peekable<CharsReader>,
+) -> Result<CommandProcessing>
+where
+    C: ClientWritingConnection
+{
+    match commands::parse(reader) {
+        Command::End => {
+            return Ok(CommandProcessing::Stop)
+        }
+        Command::Connect { address } => {
+            let (writing_stream, reading_stream) = TcpStream::connect(address)?
+                .split_to_refcells()?;
+
+            std::thread::spawn(|| {
+                with_error_report(|| handle_server_messages(reading_stream))
+            });
+
+            return Ok(CommandProcessing::Connect(writing_stream))
+        }
+        Command::Nothing => {}
+        other => match connection {
+            Some(it) => {
+                match_user_command_with_connection(other, it)?;
+            }
+            None => {
+                println!("(Console) Easy now! We should first establish a connection, all right? Go on, use /connect");
+            }
+        }
+    }
+
+    Ok(CommandProcessing::Proceed)
+}
+
+fn handle_user_commands() -> Result<()> {
+    // let mut connection = ClientWritingContext::new(&stream);
 
     let stdin = std::io::stdin();
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
+
+    let mut writing_stream: RefCell<TcpStream>;
+    let mut connection: Option<ClientWritingContext> = None;
 
     loop {
         let result = handle_user_command(&mut connection, &mut reader)?;
 
         if let CommandProcessing::Stop = &result {
             break
+        } else if let CommandProcessing::Connect(stream) = result {
+            writing_stream = stream;
+            connection = Some(ClientWritingContext::new(&writing_stream));
         }
     }
 
-    connection.write(&ClientMessage::Leave)?;
+    if let Some(it) = &mut connection {
+        it.write(&ClientMessage::Leave)?;
+    }
+
     Ok(())
 }
 
 fn handle_connection() -> Result<()> {
-    let (writing_stream, reading_stream) = TcpStream::connect("127.0.0.1:6969")?.split_to_refcells()?;
-
-    std::thread::spawn(|| {
-        with_error_report(|| handle_server_messages(reading_stream))
-    });
-
-    handle_user_commands(writing_stream)?;
-    Ok(())
+    handle_user_commands()
 }
 
 pub fn start() {
