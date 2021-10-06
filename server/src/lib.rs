@@ -12,6 +12,7 @@ use shared::{Result, with_error_report, ErrorKind};
 use shared::communication::{
     explain_common_error,
     MessageProcessing,
+    WriteMessage,
 };
 
 use shared::communication::xxson::connection::{
@@ -134,12 +135,18 @@ fn greet_user(
 
     println!("<{}> New User > {}", &time, &name);
 
-    let greeting = ServerMessage::NewUser {
+    let broadcast_greeting = ServerMessage::NewUser {
         name: name,
         time: time.into()
     };
 
-    writing_connection.broadcast(&greeting)?;
+    writing_connection.broadcast(&broadcast_greeting)?;
+
+    let personal_greeting = ServerMessage::Support {
+        text: "Welcome to the club, mate".to_owned(),
+    };
+
+    writing_connection.write(&personal_greeting)?;
     Ok(writing_connection.get_remote_address()?.to_string())
 }
 
