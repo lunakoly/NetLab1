@@ -29,7 +29,25 @@ use shared::communication::xxson::{
     ServerMessage,
     ClientMessage,
     XXsonWriter,
+    MAXIMUM_TEXT_SIZE,
+    MAXIMUM_NAME_SIZE,
 };
+
+fn broadcast_interupt<C>(connection: &mut C) -> Result<MessageProcessing>
+where
+    C: ServerReadingConnection,
+{
+    let time = chrono::Utc::now();
+    let name = connection.get_name()?;
+
+    let response = ServerMessage::Interrupt {
+        name: name,
+        time: time.into()
+    };
+
+    connection.broadcast(&response)?;
+    Ok(MessageProcessing::Stop)
+}
 
 fn handle_client_mesage<C>(connection: &mut C) -> Result<MessageProcessing>
 where
@@ -38,6 +56,8 @@ where
     let time = chrono::Utc::now();
     let name = connection.get_name()?;
 
+    println!("TS: {}", MAXIMUM_TEXT_SIZE);
+
     let message = match connection.read() {
         Ok(it) => it,
         Err(error) => {
@@ -45,12 +65,7 @@ where
             println!("<{}> Error > {} > {}", &time, &name, &explaination);
 
             if let ErrorKind::NothingToRead = error.kind {
-                let response = ServerMessage::Interrupt {
-                    name: name,
-                    time: time.into()
-                };
-
-                connection.broadcast(&response)?;
+                return broadcast_interupt(connection);
             }
 
             return Ok(MessageProcessing::Stop)
@@ -59,6 +74,12 @@ where
 
     match message {
         ClientMessage::Text { text } => {
+            if text.len() > MAXIMUM_TEXT_SIZE {
+                connection.remove_current_writer()?;
+                println!("<{}> Error > {} tried to sabotage the party by violating the text size bound. Terminated.", &time, &name);
+                return broadcast_interupt(connection);
+            }
+
             println!("<{}> Message > {} > {}", &time, &name, &text);
 
             let response = ServerMessage::Text {
@@ -70,8 +91,6 @@ where
             connection.broadcast(&response)?;
         }
         ClientMessage::Leave => {
-            // Early user removal, prevents
-            // broadcasting to the broken connection.
             connection.remove_current_writer()?;
 
             println!("<{}> User Leaves > {}", &time, &name);
@@ -85,6 +104,12 @@ where
             return Ok(MessageProcessing::Stop)
         }
         ClientMessage::Rename { new_name } => {
+            if new_name.len() > MAXIMUM_NAME_SIZE {
+                connection.remove_current_writer()?;
+                println!("<{}> Error > {} tried to sabotage the party by violating the name size bound. Terminated.", &time, &name);
+                return broadcast_interupt(connection);
+            }
+
             connection.rename(&new_name)?;
         }
     }

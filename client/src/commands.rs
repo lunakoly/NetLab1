@@ -5,6 +5,7 @@ use std::cell::{RefCell};
 use crate::chars_reader::{CharsReader};
 
 use shared::communication::{DEFAULT_PORT};
+use shared::communication::xxson::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
 
 pub enum Command {
     Nothing,
@@ -29,8 +30,13 @@ fn is_blank(symbol: char) -> bool {
 
 fn parse_rename(words: &[String]) -> Command {
     if words.len() >= 2 {
-        Command::Rename {
-            new_name: words[1].clone(),
+        if words[1].len() > MAXIMUM_NAME_SIZE {
+            println!("(Console) No way, sorry, this is way too long");
+            Command::Nothing
+        } else {
+            Command::Rename {
+                new_name: words[1].clone(),
+            }
         }
     } else {
         println!("(Console) Rename to who? Vasya, Petia - who exactly?");
@@ -107,6 +113,9 @@ fn parse_text<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
     }
 
     if line.is_empty() {
+        Command::Nothing
+    } else if line.len() > MAXIMUM_TEXT_SIZE {
+        println!("(Console) No way, sorry, this is way too long");
         Command::Nothing
     } else {
         Command::Text {

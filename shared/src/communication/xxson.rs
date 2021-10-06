@@ -7,11 +7,18 @@ use std::fmt::{Display, Formatter};
 use crate::{ErrorKind, Result};
 use crate::communication::{ReadMessage, WriteMessage};
 use crate::communication::bson::{BsonReader, BsonWriter};
-use crate::capped_reader::{CappedReader};
+use crate::capped_reader::{CappedReader, CAPPED_READER_CAPACITY};
 
 use serde::{Serialize, Deserialize};
 
 use bson::doc;
+
+// Found empirically
+pub const MINIMUM_TEXT_MESSAGE_SIZE: usize = 52;
+pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM_TEXT_MESSAGE_SIZE;
+
+pub const MAXIMUM_TEXT_SIZE: usize = MAXIMUM_TEXT_MESSAGE_CONTENT / 2;
+pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
