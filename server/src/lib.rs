@@ -5,6 +5,7 @@ use std::collections::{HashMap};
 use std::sync::{Arc, RwLock};
 use std::cell::{RefCell};
 
+use shared::communication::{DEFAULT_PORT};
 use shared::helpers::{TcpSplit, with_refcell};
 use shared::{Result, with_error_report, ErrorKind};
 
@@ -145,7 +146,7 @@ fn greet_user(
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
     let clients = Arc::new(RwLock::new(HashMap::new()));
-    let listener = TcpListener::bind("127.0.0.1:6969")?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {
         let (writing_stream, reading_stream) = incomming?.split()?;
