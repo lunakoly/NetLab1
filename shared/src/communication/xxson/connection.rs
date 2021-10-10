@@ -209,6 +209,12 @@ impl<'a> ServerConnection for ServerContext<'a> {
             the_clients.remove(&address);
         }
 
+        let mut the_names = self.names.write()?;
+
+        if the_names.contains_key(&address) {
+            the_names.remove(&address);
+        }
+
         Ok(())
     }
 }
