@@ -29,10 +29,9 @@ use shared::communication::{
 use chars_reader::{IntoCharsReader, CharsReader};
 use commands::{Command, CommandProcessing};
 
-fn handle_server_message<C>(connection: &mut C) -> Result<MessageProcessing>
-where
-    C: ClientReadingConnection
-{
+fn handle_server_message(
+    connection: &mut impl ClientReadingConnection
+) -> Result<MessageProcessing> {
     let message = match connection.read() {
         Ok(it) => it,
         Err(error) => {
@@ -60,13 +59,10 @@ fn handle_server_messages(stream: RefCell<TcpStream>) -> Result<()> {
     Ok(())
 }
 
-fn match_user_command_with_connection<C>(
+fn match_user_command_with_connection(
     command: Command,
-    connection: &mut C,
-) -> Result<CommandProcessing>
-where
-    C: ClientWritingConnection
-{
+    connection: &mut impl ClientWritingConnection,
+) -> Result<CommandProcessing> {
     match command {
         Command::Text { text } => {
             let message = ClientMessage::Text {
@@ -88,13 +84,10 @@ where
     Ok(CommandProcessing::Proceed)
 }
 
-fn handle_user_command<C>(
-    connection: &mut Option<C>,
+fn handle_user_command(
+    connection: &mut Option<impl ClientWritingConnection>,
     reader: &mut Peekable<CharsReader>,
-) -> Result<CommandProcessing>
-where
-    C: ClientWritingConnection
-{
+) -> Result<CommandProcessing> {
     match commands::parse(reader) {
         Command::End => {
             return Ok(CommandProcessing::Stop)
@@ -124,8 +117,6 @@ where
 }
 
 fn handle_user_commands() -> Result<()> {
-    // let mut connection = ClientWritingContext::new(&stream);
-
     let stdin = std::io::stdin();
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();

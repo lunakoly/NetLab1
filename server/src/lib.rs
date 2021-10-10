@@ -33,10 +33,9 @@ use shared::communication::xxson::{
     MAXIMUM_NAME_SIZE,
 };
 
-fn broadcast_interupt<C>(connection: &mut C) -> Result<MessageProcessing>
-where
-    C: ServerReadingConnection,
-{
+fn broadcast_interupt(
+    connection: &mut impl ServerReadingConnection
+) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.get_name()?;
 
@@ -49,10 +48,9 @@ where
     Ok(MessageProcessing::Stop)
 }
 
-fn handle_client_mesage<C>(connection: &mut C) -> Result<MessageProcessing>
-where
-    C: ServerReadingConnection,
-{
+fn handle_client_mesage(
+    connection: &mut impl ServerReadingConnection
+) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.get_name()?;
 
@@ -115,10 +113,9 @@ where
     Ok(MessageProcessing::Proceed)
 }
 
-fn handle_client_messages<C>(mut connection: C) -> Result<()>
-where
-    C: ServerReadingConnection,
-{
+fn handle_client_messages(
+    mut connection: impl ServerReadingConnection
+) -> Result<()> {
     loop {
         let result = handle_client_mesage(&mut connection)?;
 
