@@ -13,6 +13,8 @@ use serde::{Serialize, Deserialize};
 
 use bson::doc;
 
+use chrono::{DateTime, Local};
+
 // Found empirically
 pub const MINIMUM_TEXT_MESSAGE_SIZE: usize = 52;
 pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM_TEXT_MESSAGE_SIZE;
@@ -128,8 +130,9 @@ impl Display for ServerMessage {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         match self {
             ServerMessage::Text { text, name, time } => {
-                let the_time = time.to_chrono();
-                write!(formatter, "<{}> [{}] {}", the_time, name, text)
+                let the_time: DateTime<Local> = time.to_chrono().into();
+                let formatted = the_time.format("%e %b %Y %T");
+                write!(formatter, "<{}> [{}] {}", formatted, name, text)
             }
             ServerMessage::NewUser { name, .. } => {
                 write!(formatter, "~~ Meet our new mate: {} ~~", name)
