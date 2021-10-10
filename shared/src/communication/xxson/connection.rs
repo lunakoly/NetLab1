@@ -3,7 +3,7 @@ use std::net::{TcpStream, SocketAddr};
 use std::sync::{Arc, RwLock};
 use std::cell::{RefCell};
 
-use crate::{Result, ErrorKind};
+use crate::{Result};
 use crate::ref_cell_stream::{RefCellStream};
 use crate::capped_reader::{IntoCappedReader};
 use crate::communication::{ReadMessage, WriteMessage};
@@ -117,6 +117,7 @@ impl<'a> WithConnection for ServerContext<'a> {
 pub trait ServerConnection: Connection {
     fn get_name(&self) -> Result<String>;
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()>;
+    fn write_to_current(&mut self, message: &ServerMessage) -> Result<()>;
     fn rename(&mut self, new_name: &str) -> Result<()>;
     fn remove_current_writer(&mut self) -> Result<()>;
 }
@@ -145,53 +146,56 @@ impl<'a> ServerConnection for ServerContext<'a> {
         Ok(())
     }
 
-    fn rename(&mut self, new_name: &str) -> Result<()> {
-        let cloned_names = self.names.clone();
-        let mut the_names = cloned_names.write()?;
+    fn write_to_current(&mut self, message: &ServerMessage) -> Result<()> {
         let address = self.get_remote_address()?.to_string();
-        let name_is_free = the_names.values().all(|it| it != &new_name);
+        let mut the_clients = self.clients.write()?;
 
-        if name_is_free {
-            let old_name = if the_names.contains_key(&address) {
-                the_names[&address].clone()
-            } else {
-                address.clone()
+        if let Some(it) = the_clients.get_mut(&address) {
+            it.write(message)
+        } else {
+            // The user was removed early.
+            Ok(())
+        }
+    }
+
+    fn rename(&mut self, new_name: &str) -> Result<()> {
+        if new_name.contains('.') || new_name.contains(':') {
+            let message = ServerMessage::Support {
+                text: "Your name can't contain '.'s or ':'s".to_owned()
             };
 
-            the_names.insert(address.clone(), new_name.to_owned());
-
-            let response = ServerMessage::UserRenamed {
-                old_name: old_name,
-                new_name: new_name.to_owned(),
-            };
-
-            self.broadcast(&response)?;
+            self.write_to_current(&message)?;
             return Ok(())
         }
 
-        let mut the_clients = self.clients.write()?;
+        let cloned_names = self.names.clone();
+        let mut the_names = cloned_names.write()?;
 
-        let maybe_writer = if the_clients.contains_key(&address) {
-            the_clients.get_mut(&address)
-        } else {
-            // The user was removed early.
-            return Ok(())
-        };
-
-        let writer = if let Some(it) = maybe_writer {
-            it
-        } else {
-            let kind = ErrorKind::NoWritingStreamFound {
-                address: address
+        if the_names.values().any(|it| it == &new_name) {
+            let message = ServerMessage::Support {
+                text: "This name has already been taken, choose another one".to_owned()
             };
-            return Err(kind.into())
+
+            self.write_to_current(&message)?;
+            return Ok(())
+        }
+
+        let address = self.get_remote_address()?.to_string();
+
+        let old_name = if the_names.contains_key(&address) {
+            the_names[&address].clone()
+        } else {
+            address.clone()
         };
 
-        let message = ServerMessage::Support {
-            text: "This name has already been taken, choose another one".to_owned()
+        the_names.insert(address.clone(), new_name.to_owned());
+
+        let response = ServerMessage::UserRenamed {
+            old_name: old_name,
+            new_name: new_name.to_owned(),
         };
 
-        writer.write(&message)?;
+        self.broadcast(&response)?;
         Ok(())
     }
 
@@ -221,6 +225,10 @@ impl<W: WithServerConnection> ServerConnection for W {
 
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
         self.get_server_connection_mut().broadcast(message)
+    }
+
+    fn write_to_current(&mut self, message: &ServerMessage) -> Result<()> {
+        self.get_server_connection_mut().write_to_current(message)
     }
 
     fn rename(&mut self, new_name: &str) -> Result<()> {
