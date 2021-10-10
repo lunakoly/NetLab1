@@ -56,8 +56,6 @@ where
     let time = chrono::Utc::now();
     let name = connection.get_name()?;
 
-    println!("TS: {}", MAXIMUM_TEXT_SIZE);
-
     let message = match connection.read() {
         Ok(it) => it,
         Err(error) => {
