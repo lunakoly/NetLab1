@@ -1,9 +1,8 @@
-use std::collections::{HashMap};
 use std::net::{TcpStream, SocketAddr};
-use std::sync::{Arc, RwLock};
 use std::cell::{RefCell};
 
 use crate::{Result};
+use crate::safe_map::{SafeMap, SimpleMap};
 use crate::ref_cell_stream::{RefCellStream};
 use crate::capped_reader::{IntoCappedReader};
 use crate::communication::{ReadMessage, WriteMessage};
@@ -81,8 +80,8 @@ pub trait WithClientConnection: WithConnection {
 
 impl<W: WithClientConnection> ClientConnection for W {}
 
-pub type NamesMap = Arc<RwLock<HashMap<String, String>>>;
-pub type Clients<'a> = Arc<RwLock<HashMap<String, XXsonWriter<TcpStream, ServerMessage>>>>;
+pub type NamesMap = SafeMap<String, String>;
+pub type Clients<'a> = SafeMap<String, XXsonWriter<TcpStream, ServerMessage>>;
 
 pub struct ServerContext<'a> {
     common: Context<'a>,
@@ -125,10 +124,9 @@ pub trait ServerConnection: Connection {
 impl<'a> ServerConnection for ServerContext<'a> {
     fn get_name(&self) -> Result<String> {
         let address = self.get_remote_address()?.to_string();
-        let it = self.names.read()?;
 
-        let proper = if it.contains_key(&address) {
-            it[&address].clone()
+        let proper = if let Some(it) = self.names.get_clone(&address)? {
+            it
         } else {
             address
         };
@@ -182,8 +180,8 @@ impl<'a> ServerConnection for ServerContext<'a> {
 
         let address = self.get_remote_address()?.to_string();
 
-        let old_name = if the_names.contains_key(&address) {
-            the_names[&address].clone()
+        let old_name = if let Some(it) = the_names.get(&address) {
+            it.clone()
         } else {
             address.clone()
         };
@@ -201,19 +199,11 @@ impl<'a> ServerConnection for ServerContext<'a> {
 
     fn remove_current_writer(&mut self) -> Result<()> {
         let address = self.get_remote_address()?.to_string();
-        let mut the_clients = self.clients.write()?;
 
         // In fact, the corresponding
         // writer must always be present.
-        if the_clients.contains_key(&address) {
-            the_clients.remove(&address);
-        }
-
-        let mut the_names = self.names.write()?;
-
-        if the_names.contains_key(&address) {
-            the_names.remove(&address);
-        }
+        self.clients.remove(&address)?;
+        self.names.remove(&address)?;
 
         Ok(())
     }
