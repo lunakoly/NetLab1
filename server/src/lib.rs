@@ -175,7 +175,7 @@ fn handle_connection() -> Result<()> {
             with_error_report(|| handle_client_messages(reading_connection))
         });
 
-        clients.write()?.insert(address, writing_connection);
+        clients.insert(address, writing_connection)?;
     }
 
     Ok(())
