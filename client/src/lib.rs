@@ -6,6 +6,7 @@ use std::iter::Peekable;
 use std::net::{TcpStream};
 
 use shared::{Result, with_error_report};
+use shared::shared::{Shared};
 
 use shared::communication::xxson::{
     ClientMessage,
@@ -120,7 +121,7 @@ fn handle_user_commands() -> Result<()> {
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
 
-    let mut connection: Option<ClientContext> = None;
+    let mut connection: Option<Shared<ClientContext>> = None;
 
     loop {
         let result = handle_user_command(&mut connection, &mut reader)?;

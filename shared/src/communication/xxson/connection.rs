@@ -1,8 +1,8 @@
 use std::net::{TcpStream, SocketAddr};
 
 use crate::{Result};
-use crate::shared::map::{SharedMap};
 use crate::shared::{Shared};
+use crate::shared::map::{SharedMap};
 use crate::communication::{ReadMessage, WriteMessage};
 
 use super::{XXsonReader, XXsonWriter};
@@ -98,8 +98,16 @@ pub trait WithClientConnection: WithConnection + ReadMessage<ServerMessage> + Wr
 
 impl<W: WithClientConnection> ClientConnection for W {}
 
+impl Connection for Shared<ClientContext> {
+    fn remote_address(&self) -> Result<SocketAddr> {
+        self.inner.read()?.remote_address()
+    }
+}
+
+impl ClientConnection for Shared<ClientContext> {}
+
 pub type NamesMap = SharedMap<String, String>;
-pub type Clients = SharedMap<String, ServerContext>;
+pub type Clients = SharedMap<String, Shared<ServerContext>>;
 
 pub struct ServerContext {
     common: Context,
@@ -173,7 +181,7 @@ impl ServerConnection for ServerContext {
         let mut the_clients = self.clients.write()?;
 
         for (_, connection) in the_clients.iter_mut() {
-            connection.writer.write_message(message)?;
+            connection.write_message(message)?;
         }
 
         Ok(())
@@ -255,9 +263,33 @@ impl<W: WithServerConnection> ServerConnection for W {
     }
 }
 
+impl Connection for Shared<ServerContext> {
+    fn remote_address(&self) -> Result<SocketAddr> {
+        self.inner.read()?.remote_address()
+    }
+}
+
+impl ServerConnection for Shared<ServerContext> {
+    fn name(&self) -> Result<String> {
+        self.inner.read()?.name()
+    }
+
+    fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
+        self.inner.write()?.broadcast(message)
+    }
+
+    fn rename(&mut self, new_name: &str) -> Result<()> {
+        self.inner.write()?.rename(new_name)
+    }
+
+    fn remove_from_clients(&mut self) -> Result<()> {
+        self.inner.write()?.remove_from_clients()
+    }
+}
+
 pub fn build_client_connection(
     stream: TcpStream
-) -> Result<(ClientContext, ClientContext)> {
+) -> Result<(Shared<ClientContext>, Shared<ClientContext>)> {
     let reading_stream = Shared::new(stream.try_clone()?);
     let writing_stream = Shared::new(stream);
 
@@ -269,12 +301,16 @@ pub fn build_client_connection(
         XXsonWriter::<_, ClientMessage>::new(writing_stream.clone())
     );
 
-    let reader_context = ClientContext::new(
-        reading_stream, reader.clone(), writer.clone()
+    let reader_context = Shared::new(
+        ClientContext::new(
+            reading_stream, reader.clone(), writer.clone()
+        )
     );
 
-    let writer_context = ClientContext::new(
-        writing_stream, reader, writer
+    let writer_context = Shared::new(
+        ClientContext::new(
+            writing_stream, reader, writer
+        )
     );
 
     Ok((reader_context, writer_context))
@@ -284,7 +320,7 @@ pub fn build_server_connection(
     stream: TcpStream,
     names: NamesMap,
     clients: Clients,
-) -> Result<(ServerContext, ServerContext)> {
+) -> Result<(Shared<ServerContext>, Shared<ServerContext>)> {
     let reading_stream = Shared::new(stream.try_clone()?);
     let writing_stream = Shared::new(stream);
 
@@ -296,12 +332,16 @@ pub fn build_server_connection(
         XXsonWriter::<_, ServerMessage>::new(writing_stream.clone())
     );
 
-    let reader_context = ServerContext::new(
-        reading_stream, names.clone(), clients.clone(), reader.clone(), writer.clone()
+    let reader_context = Shared::new(
+        ServerContext::new(
+            reading_stream, names.clone(), clients.clone(), reader.clone(), writer.clone()
+        )
     );
 
-    let writer_context = ServerContext::new(
-        writing_stream, names, clients, reader, writer
+    let writer_context = Shared::new(
+        ServerContext::new(
+            writing_stream, names, clients, reader, writer
+        )
     );
 
     Ok((reader_context, writer_context))

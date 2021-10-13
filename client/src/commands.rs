@@ -2,6 +2,7 @@ use std::iter::{Peekable};
 
 use crate::chars_reader::{CharsReader};
 
+use shared::shared::{Shared};
 use shared::communication::{DEFAULT_PORT};
 use shared::communication::xxson::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
 use shared::communication::xxson::connection::{ClientContext};
@@ -17,7 +18,7 @@ pub enum Command {
 pub enum CommandProcessing {
     Proceed,
     Stop,
-    Connect(ClientContext)
+    Connect(Shared<ClientContext>)
 }
 
 fn is_blank(symbol: char) -> bool {
