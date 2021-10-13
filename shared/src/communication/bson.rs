@@ -4,6 +4,7 @@ use crate::{ErrorKind, Result};
 use crate::communication::{ReadMessage, WriteMessage};
 
 use crate::capped_reader::{
+    IntoCappedReader,
     CappedReader,
     CappedRead,
 };
@@ -14,16 +15,16 @@ pub struct BsonReader<R> {
     pub stream: CappedReader<R>,
 }
 
-impl<R> BsonReader<R> {
-    pub fn new(capped_reader: CappedReader<R>) -> BsonReader<R> {
+impl<R: Read> BsonReader<R> {
+    pub fn new(reader: R) -> BsonReader<R> {
         BsonReader {
-            stream: capped_reader,
+            stream: reader.capped(),
         }
     }
 }
 
 impl<R: Read> ReadMessage<Document> for BsonReader<R> {
-    fn read(&mut self) -> Result<Document> {
+    fn read_message(&mut self) -> Result<Document> {
         match Document::from_reader(&mut self.stream) {
             Ok(it) => {
                 self.stream.clear();
@@ -72,7 +73,7 @@ impl<W> BsonWriter<W> {
 }
 
 impl<W: Write> WriteMessage<Document> for BsonWriter<W> {
-    fn write(&mut self, message: &Document) -> Result<()> {
+    fn write_message(&mut self, message: &Document) -> Result<()> {
         // Idk, but &mut [0u8; N] doesn't work here,
         // it simply stays filled with 0
         let mut buffer = vec![];

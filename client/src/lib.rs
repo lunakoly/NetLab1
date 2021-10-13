@@ -3,21 +3,18 @@ mod commands;
 
 use std::io::{BufRead};
 use std::iter::Peekable;
-use std::cell::{RefCell};
 use std::net::{TcpStream};
 
 use shared::{Result, with_error_report};
-use shared::helpers::{TcpSplit};
 
 use shared::communication::xxson::{
     ClientMessage,
 };
 
 use shared::communication::xxson::connection::{
-    ClientReadingConnection,
-    ClientWritingConnection,
-    ClientReadingContext,
-    ClientWritingContext,
+    ClientContext,
+    ClientConnection,
+    build_client_connection,
 };
 
 use shared::communication::{
@@ -30,9 +27,9 @@ use chars_reader::{IntoCharsReader, CharsReader};
 use commands::{Command, CommandProcessing};
 
 fn handle_server_message(
-    connection: &mut impl ClientReadingConnection
+    connection: &mut impl ClientConnection
 ) -> Result<MessageProcessing> {
-    let message = match connection.read() {
+    let message = match connection.read_message() {
         Ok(it) => it,
         Err(error) => {
             let explaination = explain_common_error(&error);
@@ -45,9 +42,7 @@ fn handle_server_message(
     Ok(MessageProcessing::Proceed)
 }
 
-fn handle_server_messages(stream: RefCell<TcpStream>) -> Result<()> {
-    let mut connection = ClientReadingContext::new(&stream);
-
+fn handle_server_messages(mut connection: impl ClientConnection) -> Result<()> {
     loop {
         let result = handle_server_message(&mut connection)?;
 
@@ -61,7 +56,7 @@ fn handle_server_messages(stream: RefCell<TcpStream>) -> Result<()> {
 
 fn match_user_command_with_connection(
     command: Command,
-    connection: &mut impl ClientWritingConnection,
+    connection: &mut impl ClientConnection,
 ) -> Result<CommandProcessing> {
     match command {
         Command::Text { text } => {
@@ -69,14 +64,14 @@ fn match_user_command_with_connection(
                 text: text,
             };
 
-            connection.write(&message)?;
+            connection.write_message(&message)?;
         }
         Command::Rename { new_name } => {
             let message = ClientMessage::Rename {
                 new_name: new_name,
             };
 
-            connection.write(&message)?;
+            connection.write_message(&message)?;
         }
         _ => {}
     }
@@ -85,7 +80,7 @@ fn match_user_command_with_connection(
 }
 
 fn handle_user_command(
-    connection: &mut Option<impl ClientWritingConnection>,
+    connection: &mut Option<impl ClientConnection>,
     reader: &mut Peekable<CharsReader>,
 ) -> Result<CommandProcessing> {
     match commands::parse(reader) {
@@ -93,14 +88,18 @@ fn handle_user_command(
             return Ok(CommandProcessing::Stop)
         }
         Command::Connect { address } => {
-            let (writing_stream, reading_stream) = TcpStream::connect(address)?
-                .split_to_refcells()?;
+            let (
+                reading_connection,
+                writing_connection
+            ) = build_client_connection(
+                TcpStream::connect(address)?
+            )?;
 
             std::thread::spawn(|| {
-                with_error_report(|| handle_server_messages(reading_stream))
+                with_error_report(|| handle_server_messages(reading_connection))
             });
 
-            return Ok(CommandProcessing::Connect(writing_stream))
+            return Ok(CommandProcessing::Connect(writing_connection))
         }
         Command::Nothing => {}
         other => match connection {
@@ -121,22 +120,20 @@ fn handle_user_commands() -> Result<()> {
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
 
-    let mut writing_stream: RefCell<TcpStream>;
-    let mut connection: Option<ClientWritingContext> = None;
+    let mut connection: Option<ClientContext> = None;
 
     loop {
         let result = handle_user_command(&mut connection, &mut reader)?;
 
         if let CommandProcessing::Stop = &result {
             break
-        } else if let CommandProcessing::Connect(stream) = result {
-            writing_stream = stream;
-            connection = Some(ClientWritingContext::new(&writing_stream));
+        } else if let CommandProcessing::Connect(it) = result {
+            connection = Some(it);
         }
     }
 
     if let Some(it) = &mut connection {
-        it.write(&ClientMessage::Leave)?;
+        it.write_message(&ClientMessage::Leave)?;
     }
 
     Ok(())

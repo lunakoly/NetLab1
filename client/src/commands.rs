@@ -1,11 +1,10 @@
 use std::iter::{Peekable};
-use std::net::{TcpStream};
-use std::cell::{RefCell};
 
 use crate::chars_reader::{CharsReader};
 
 use shared::communication::{DEFAULT_PORT};
 use shared::communication::xxson::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
+use shared::communication::xxson::connection::{ClientContext};
 
 pub enum Command {
     Nothing,
@@ -18,7 +17,7 @@ pub enum Command {
 pub enum CommandProcessing {
     Proceed,
     Stop,
-    Connect(RefCell<TcpStream>)
+    Connect(ClientContext)
 }
 
 fn is_blank(symbol: char) -> bool {

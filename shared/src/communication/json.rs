@@ -19,7 +19,7 @@ impl<R> JsonReader<R> {
 }
 
 impl<R: Read> ReadMessage<Value> for JsonReader<R> {
-    fn read(&mut self) -> Result<Value> {
+    fn read_message(&mut self) -> Result<Value> {
         let mut iterator = Deserializer::from_reader(&mut self.stream).into_iter::<Value>();
 
         match iterator.next() {
@@ -50,7 +50,7 @@ impl<W> JsonWriter<W> {
 }
 
 impl<W: Write> WriteMessage<Value> for JsonWriter<W> {
-    fn write(&mut self, message: &Value) -> Result<()> {
+    fn write_message(&mut self, message: &Value) -> Result<()> {
         self.stream.write(message.to_string().as_bytes())?;
         self.stream.flush()?;
         Ok(())

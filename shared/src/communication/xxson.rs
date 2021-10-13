@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 use crate::{ErrorKind, Result};
 use crate::communication::{ReadMessage, WriteMessage};
 use crate::communication::bson::{BsonReader, BsonWriter};
-use crate::capped_reader::{CappedReader, CAPPED_READER_CAPACITY};
+use crate::capped_reader::{CAPPED_READER_CAPACITY};
 
 use serde::{Serialize, Deserialize};
 
@@ -44,10 +44,10 @@ pub struct XXsonReader<R, M> {
     phantom: PhantomData<M>,
 }
 
-impl<R, M> XXsonReader<R, M> {
-    pub fn new(capped_reader: CappedReader<R>) -> XXsonReader<R, M> {
+impl<R: Read, M> XXsonReader<R, M> {
+    pub fn new(reader: R) -> XXsonReader<R, M> {
         XXsonReader {
-            backend: BsonReader::new(capped_reader),
+            backend: BsonReader::new(reader),
             phantom: PhantomData,
         }
     }
@@ -56,8 +56,8 @@ impl<R, M> XXsonReader<R, M> {
 // TODO: review
 
 impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
-    fn read(&mut self) -> Result<ClientMessage> {
-        match self.backend.read() {
+    fn read_message(&mut self) -> Result<ClientMessage> {
+        match self.backend.read_message() {
             Ok(it) => {
                 let message: ClientMessage = bson::from_bson(it.into())?;
                 Ok(message)
@@ -70,8 +70,8 @@ impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
 }
 
 impl<R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage> {
-    fn read(&mut self) -> Result<ServerMessage> {
-        match self.backend.read() {
+    fn read_message(&mut self) -> Result<ServerMessage> {
+        match self.backend.read_message() {
             Ok(it) => {
                 let message: ServerMessage = bson::from_bson(it.into())?;
                 Ok(message)
@@ -98,17 +98,17 @@ impl<W, M> XXsonWriter<W, M> {
 }
 
 impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage> {
-    fn write(&mut self, message: &ClientMessage) -> Result<()> {
+    fn write_message(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
         if let Some(it) = serialized.as_document() {
-            self.backend.write(it)
+            self.backend.write_message(it)
         } else if let Some(it) = serialized.as_str() {
             let wrapper = doc! {
                 it: {}
             };
 
-            self.backend.write(&wrapper)
+            self.backend.write_message(&wrapper)
         } else {
             Err(ErrorKind::NothingToRead.into())
         }
@@ -116,11 +116,11 @@ impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage> {
 }
 
 impl<W: Write> WriteMessage<ServerMessage> for XXsonWriter<W, ServerMessage> {
-    fn write(&mut self, message: &ServerMessage) -> Result<()> {
+    fn write_message(&mut self, message: &ServerMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
         match serialized.as_document() {
-            Some(document) => self.backend.write(document),
+            Some(document) => self.backend.write_message(document),
             None => Err(ErrorKind::NothingToRead.into())
         }
     }

@@ -1,40 +1,32 @@
 use std::thread;
 
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener};
 use std::collections::{HashMap};
 use std::sync::{Arc, RwLock};
-use std::cell::{RefCell};
 
 use shared::communication::{DEFAULT_PORT};
-use shared::helpers::{TcpSplit, with_refcell};
 use shared::{Result, with_error_report, ErrorKind};
 
 use shared::communication::{
     explain_common_error,
     MessageProcessing,
-    WriteMessage,
 };
 
 use shared::communication::xxson::connection::{
-    Connection,
     ServerConnection,
-    ServerReadingConnection,
-    ServerReadingContext,
-    ServerWritingContext,
     NamesMap,
-    Clients,
+    build_server_connection,
 };
 
 use shared::communication::xxson::{
     ServerMessage,
     ClientMessage,
-    XXsonWriter,
     MAXIMUM_TEXT_SIZE,
     MAXIMUM_NAME_SIZE,
 };
 
 fn broadcast_interupt(
-    connection: &mut impl ServerReadingConnection
+    connection: &mut impl ServerConnection
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.get_name()?;
@@ -49,12 +41,12 @@ fn broadcast_interupt(
 }
 
 fn handle_client_mesage(
-    connection: &mut impl ServerReadingConnection
+    connection: &mut impl ServerConnection
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.get_name()?;
 
-    let message = match connection.read() {
+    let message = match connection.read_message() {
         Ok(it) => it,
         Err(error) => {
             let explaination = explain_common_error(&error);
@@ -114,7 +106,7 @@ fn handle_client_mesage(
 }
 
 fn handle_client_messages(
-    mut connection: impl ServerReadingConnection
+    mut connection: impl ServerConnection
 ) -> Result<()> {
     loop {
         let result = handle_client_mesage(&mut connection)?;
@@ -140,16 +132,8 @@ fn setup_names_mapping() -> NamesMap {
 }
 
 fn greet_user(
-    stream: &RefCell<TcpStream>,
-    names: NamesMap,
-    clients: Clients,
+    writing_connection: &mut impl ServerConnection,
 ) -> Result<String> {
-    let mut writing_connection = ServerWritingContext::new(
-        stream,
-        names.clone(),
-        clients.clone(),
-    );
-
     let time = chrono::Utc::now();
     let name = writing_connection.get_name()?;
 
@@ -166,7 +150,7 @@ fn greet_user(
         text: "Welcome to the club, mate".to_owned(),
     };
 
-    writing_connection.write(&personal_greeting)?;
+    writing_connection.write_message(&personal_greeting)?;
     Ok(writing_connection.get_remote_address()?.to_string())
 }
 
@@ -176,37 +160,22 @@ fn handle_connection() -> Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {
-        let (writing_stream, reading_stream) = incomming?.split()?;
-
-        // Temporary create the full ServerWritingContext
-        // infrastructure, but then break it all back down
-        // to the TcpStream, so that we could create
-        // a minimal writer that would take ownership over
-        // this stream. ServerWritingContext can only work
-        // with references.
-
-        let (writing_stream, address) = with_refcell(
-            writing_stream,
-            |wrapped| greet_user(wrapped, names.clone(), clients.clone())
+        let (
+            reading_connection,
+            mut writing_connection
+        ) = build_server_connection(
+            incomming?,
+            names.clone(),
+            clients.clone(),
         )?;
 
-        let new_names = names.clone();
-        let new_clients = clients.clone();
+        let address = greet_user(&mut writing_connection)?;
 
         thread::spawn(|| {
-            let wrapped = RefCell::new(reading_stream);
-
-            let reading_connection = ServerReadingContext::new(
-                &wrapped,
-                new_names,
-                new_clients
-            );
-
             with_error_report(|| handle_client_messages(reading_connection))
         });
 
-        let writer: XXsonWriter<TcpStream, ServerMessage> = XXsonWriter::new(writing_stream);
-        clients.write()?.insert(address, writer);
+        clients.write()?.insert(address, writing_connection);
     }
 
     Ok(())
