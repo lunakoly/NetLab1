@@ -12,7 +12,7 @@ use crate::capped_reader::{
 use bson::Document;
 
 pub struct BsonReader<R> {
-    pub stream: CappedReader<R>,
+    stream: CappedReader<R>,
 }
 
 impl<R: Read> BsonReader<R> {
@@ -61,7 +61,7 @@ impl<R: Read> ReadMessage<Document> for BsonReader<R> {
 }
 
 pub struct BsonWriter<W> {
-    pub stream: W,
+    stream: W,
 }
 
 impl<W> BsonWriter<W> {

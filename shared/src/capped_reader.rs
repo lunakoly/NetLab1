@@ -7,7 +7,7 @@ pub trait CappedRead: Read {
 pub const CAPPED_READER_CAPACITY: usize = 100;
 
 pub struct CappedReader<R> {
-    pub stream: R,
+    stream: R,
     offset: usize,
 }
 

@@ -7,7 +7,7 @@ use crate::communication::{ReadMessage, WriteMessage};
 use serde_json::{Deserializer, Value};
 
 pub struct JsonReader<R> {
-    pub stream: CappedReader<R>,
+    stream: CappedReader<R>,
 }
 
 impl<R> JsonReader<R> {
@@ -38,7 +38,7 @@ impl<R: Read> ReadMessage<Value> for JsonReader<R> {
 }
 
 pub struct JsonWriter<W> {
-    pub stream: W,
+    stream: W,
 }
 
 impl<W> JsonWriter<W> {
