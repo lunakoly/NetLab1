@@ -1,8 +1,8 @@
 use std::net::{TcpStream, SocketAddr};
 
 use crate::{Result};
-use crate::shared_map::{SharedMap, SimpleMap};
-use crate::shared_streams::{SharedStream};
+use crate::shared::map::{SharedMap};
+use crate::shared::{Shared};
 use crate::communication::{ReadMessage, WriteMessage};
 
 use super::{XXsonReader, XXsonWriter};
@@ -13,11 +13,11 @@ use super::{
 };
 
 pub struct Context {
-    stream: SharedStream<TcpStream>,
+    stream: Shared<TcpStream>,
 }
 
 impl Context {
-    pub fn new(stream: SharedStream<TcpStream>) -> Context {
+    pub fn new(stream: Shared<TcpStream>) -> Context {
         Context {
             stream: stream,
         }
@@ -30,7 +30,7 @@ pub trait Connection {
 
 impl Connection for Context {
     fn remote_address(&self) -> Result<SocketAddr> {
-        Ok(self.stream.stream.read()?.peer_addr()?)
+        Ok(self.stream.inner.read()?.peer_addr()?)
     }
 }
 
@@ -47,15 +47,15 @@ impl<W: WithConnection> Connection for W {
 
 pub struct ClientContext {
     common: Context,
-    reader: SharedStream<XXsonReader<SharedStream<TcpStream>, ServerMessage>>,
-    writer: SharedStream<XXsonWriter<SharedStream<TcpStream>, ClientMessage>>,
+    reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage>>,
+    writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage>>,
 }
 
 impl ClientContext {
     pub fn new(
-        stream: SharedStream<TcpStream>,
-        reader: SharedStream<XXsonReader<SharedStream<TcpStream>, ServerMessage>>,
-        writer: SharedStream<XXsonWriter<SharedStream<TcpStream>, ClientMessage>>,
+        stream: Shared<TcpStream>,
+        reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage>>,
+        writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage>>,
     ) -> ClientContext {
         ClientContext {
             common: Context::new(stream),
@@ -105,17 +105,17 @@ pub struct ServerContext {
     common: Context,
     names: NamesMap,
     clients: Clients,
-    reader: SharedStream<XXsonReader<SharedStream<TcpStream>, ClientMessage>>,
-    writer: SharedStream<XXsonWriter<SharedStream<TcpStream>, ServerMessage>>,
+    reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage>>,
+    writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage>>,
 }
 
 impl ServerContext {
     pub fn new(
-        stream: SharedStream<TcpStream>,
+        stream: Shared<TcpStream>,
         names: NamesMap,
         clients: Clients,
-        reader: SharedStream<XXsonReader<SharedStream<TcpStream>, ClientMessage>>,
-        writer: SharedStream<XXsonWriter<SharedStream<TcpStream>, ServerMessage>>,
+        reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage>>,
+        writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage>>,
     ) -> ServerContext {
         ServerContext {
             common: Context::new(stream),
@@ -258,14 +258,14 @@ impl<W: WithServerConnection> ServerConnection for W {
 pub fn build_client_connection(
     stream: TcpStream
 ) -> Result<(ClientContext, ClientContext)> {
-    let reading_stream = SharedStream::new(stream.try_clone()?);
-    let writing_stream = SharedStream::new(stream);
+    let reading_stream = Shared::new(stream.try_clone()?);
+    let writing_stream = Shared::new(stream);
 
-    let reader = SharedStream::new(
+    let reader = Shared::new(
         XXsonReader::<_, ServerMessage>::new(reading_stream.clone())
     );
 
-    let writer = SharedStream::new(
+    let writer = Shared::new(
         XXsonWriter::<_, ClientMessage>::new(writing_stream.clone())
     );
 
@@ -285,14 +285,14 @@ pub fn build_server_connection(
     names: NamesMap,
     clients: Clients,
 ) -> Result<(ServerContext, ServerContext)> {
-    let reading_stream = SharedStream::new(stream.try_clone()?);
-    let writing_stream = SharedStream::new(stream);
+    let reading_stream = Shared::new(stream.try_clone()?);
+    let writing_stream = Shared::new(stream);
 
-    let reader = SharedStream::new(
+    let reader = Shared::new(
         XXsonReader::<_, ClientMessage>::new(reading_stream.clone())
     );
 
-    let writer = SharedStream::new(
+    let writer = Shared::new(
         XXsonWriter::<_, ServerMessage>::new(writing_stream.clone())
     );
 

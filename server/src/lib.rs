@@ -2,8 +2,8 @@ use std::thread;
 
 use std::net::{TcpListener};
 use std::collections::{HashMap};
-use std::sync::{Arc, RwLock};
 
+use shared::shared::{Shared};
 use shared::communication::{DEFAULT_PORT};
 use shared::{Result, with_error_report, ErrorKind};
 
@@ -128,7 +128,7 @@ fn setup_names_mapping() -> NamesMap {
         "Server".to_owned(),
     );
 
-    Arc::new(RwLock::new(names))
+    Shared::new(names)
 }
 
 fn greet_user(
@@ -156,7 +156,7 @@ fn greet_user(
 
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
-    let clients = Arc::new(RwLock::new(HashMap::new()));
+    let clients = Shared::new(HashMap::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {
