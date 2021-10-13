@@ -29,7 +29,7 @@ fn broadcast_interupt(
     connection: &mut impl ServerConnection
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
-    let name = connection.get_name()?;
+    let name = connection.name()?;
 
     let response = ServerMessage::Interrupt {
         name: name,
@@ -44,7 +44,7 @@ fn handle_client_mesage(
     connection: &mut impl ServerConnection
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
-    let name = connection.get_name()?;
+    let name = connection.name()?;
 
     let message = match connection.read_message() {
         Ok(it) => it,
@@ -63,7 +63,7 @@ fn handle_client_mesage(
     match message {
         ClientMessage::Text { text } => {
             if text.len() > MAXIMUM_TEXT_SIZE {
-                connection.remove_current_writer()?;
+                connection.remove_from_clients()?;
                 println!("<{}> Error > {} tried to sabotage the party by violating the text size bound. Terminated.", &time, &name);
                 return broadcast_interupt(connection);
             }
@@ -79,7 +79,7 @@ fn handle_client_mesage(
             connection.broadcast(&response)?;
         }
         ClientMessage::Leave => {
-            connection.remove_current_writer()?;
+            connection.remove_from_clients()?;
 
             println!("<{}> User Leaves > {}", &time, &name);
 
@@ -93,7 +93,7 @@ fn handle_client_mesage(
         }
         ClientMessage::Rename { new_name } => {
             if new_name.len() > MAXIMUM_NAME_SIZE {
-                connection.remove_current_writer()?;
+                connection.remove_from_clients()?;
                 println!("<{}> Error > {} tried to sabotage the party by violating the name size bound. Terminated.", &time, &name);
                 return broadcast_interupt(connection);
             }
@@ -112,7 +112,7 @@ fn handle_client_messages(
         let result = handle_client_mesage(&mut connection)?;
 
         if let MessageProcessing::Stop = &result {
-            connection.remove_current_writer()?;
+            connection.remove_from_clients()?;
             break
         }
     }
@@ -135,7 +135,7 @@ fn greet_user(
     writing_connection: &mut impl ServerConnection,
 ) -> Result<String> {
     let time = chrono::Utc::now();
-    let name = writing_connection.get_name()?;
+    let name = writing_connection.name()?;
 
     println!("<{}> New User > {}", &time, &name);
 
@@ -151,7 +151,7 @@ fn greet_user(
     };
 
     writing_connection.write_message(&personal_greeting)?;
-    Ok(writing_connection.get_remote_address()?.to_string())
+    Ok(writing_connection.remote_address()?.to_string())
 }
 
 fn handle_connection() -> Result<()> {

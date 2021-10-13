@@ -25,23 +25,23 @@ impl Context {
 }
 
 pub trait Connection {
-    fn get_remote_address(&self) -> Result<SocketAddr>;
+    fn remote_address(&self) -> Result<SocketAddr>;
 }
 
 impl Connection for Context {
-    fn get_remote_address(&self) -> Result<SocketAddr> {
+    fn remote_address(&self) -> Result<SocketAddr> {
         Ok(self.stream.stream.read()?.peer_addr()?)
     }
 }
 
 pub trait WithConnection {
-    fn get_connection(&self) -> &dyn Connection;
-    fn get_connection_mut(&mut self) -> &mut dyn Connection;
+    fn connection(&self) -> &dyn Connection;
+    fn connection_mut(&mut self) -> &mut dyn Connection;
 }
 
 impl<W: WithConnection> Connection for W {
-    fn get_remote_address(&self) -> Result<SocketAddr> {
-        self.get_connection().get_remote_address()
+    fn remote_address(&self) -> Result<SocketAddr> {
+        self.connection().remote_address()
     }
 }
 
@@ -66,11 +66,11 @@ impl ClientContext {
 }
 
 impl WithConnection for ClientContext {
-    fn get_connection(&self) -> &dyn Connection {
+    fn connection(&self) -> &dyn Connection {
         &self.common
     }
 
-    fn get_connection_mut(&mut self) -> &mut dyn Connection {
+    fn connection_mut(&mut self) -> &mut dyn Connection {
         &mut self.common
     }
 }
@@ -92,8 +92,8 @@ pub trait ClientConnection: Connection + ReadMessage<ServerMessage> + WriteMessa
 impl<'a> ClientConnection for ClientContext {}
 
 pub trait WithClientConnection: WithConnection + ReadMessage<ServerMessage> + WriteMessage<ClientMessage> {
-    fn get_client_connection(&self) -> &dyn ClientConnection;
-    fn get_client_connection_mut(&mut self) -> &mut dyn ClientConnection;
+    fn client_connection(&self) -> &dyn ClientConnection;
+    fn client_connection_mut(&mut self) -> &mut dyn ClientConnection;
 }
 
 impl<W: WithClientConnection> ClientConnection for W {}
@@ -128,11 +128,11 @@ impl ServerContext {
 }
 
 impl WithConnection for ServerContext {
-    fn get_connection(&self) -> &dyn Connection {
+    fn connection(&self) -> &dyn Connection {
         &self.common
     }
 
-    fn get_connection_mut(&mut self) -> &mut dyn Connection {
+    fn connection_mut(&mut self) -> &mut dyn Connection {
         &mut self.common
     }
 }
@@ -150,16 +150,15 @@ impl WriteMessage<ServerMessage> for ServerContext {
 }
 
 pub trait ServerConnection: Connection + ReadMessage<ClientMessage> + WriteMessage<ServerMessage> {
-    fn get_name(&self) -> Result<String>;
+    fn name(&self) -> Result<String>;
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()>;
-    fn write_to_current(&mut self, message: &ServerMessage) -> Result<()>;
     fn rename(&mut self, new_name: &str) -> Result<()>;
-    fn remove_current_writer(&mut self) -> Result<()>;
+    fn remove_from_clients(&mut self) -> Result<()>;
 }
 
 impl ServerConnection for ServerContext {
-    fn get_name(&self) -> Result<String> {
-        let address = self.get_remote_address()?.to_string();
+    fn name(&self) -> Result<String> {
+        let address = self.remote_address()?.to_string();
 
         let proper = if let Some(it) = self.names.get_clone(&address)? {
             it
@@ -180,25 +179,13 @@ impl ServerConnection for ServerContext {
         Ok(())
     }
 
-    fn write_to_current(&mut self, message: &ServerMessage) -> Result<()> {
-        let address = self.get_remote_address()?.to_string();
-        let mut the_clients = self.clients.write()?;
-
-        if let Some(it) = the_clients.get_mut(&address) {
-            it.writer.write_message(message)
-        } else {
-            // The user was removed early.
-            Ok(())
-        }
-    }
-
     fn rename(&mut self, new_name: &str) -> Result<()> {
         if new_name.contains('.') || new_name.contains(':') {
             let message = ServerMessage::Support {
                 text: "Your name can't contain '.'s or ':'s".to_owned()
             };
 
-            self.write_to_current(&message)?;
+            self.write_message(&message)?;
             return Ok(())
         }
 
@@ -210,11 +197,11 @@ impl ServerConnection for ServerContext {
                 text: "This name has already been taken, choose another one".to_owned()
             };
 
-            self.write_to_current(&message)?;
+            self.write_message(&message)?;
             return Ok(())
         }
 
-        let address = self.get_remote_address()?.to_string();
+        let address = self.remote_address()?.to_string();
 
         let old_name = if let Some(it) = the_names.get(&address) {
             it.clone()
@@ -233,8 +220,8 @@ impl ServerConnection for ServerContext {
         Ok(())
     }
 
-    fn remove_current_writer(&mut self) -> Result<()> {
-        let address = self.get_remote_address()?.to_string();
+    fn remove_from_clients(&mut self) -> Result<()> {
+        let address = self.remote_address()?.to_string();
 
         // In fact, the corresponding
         // writer must always be present.
@@ -246,29 +233,25 @@ impl ServerConnection for ServerContext {
 }
 
 pub trait WithServerConnection: WithConnection + ReadMessage<ClientMessage> + WriteMessage<ServerMessage> {
-    fn get_server_connection(&self) -> &dyn ServerConnection;
-    fn get_server_connection_mut(&mut self) -> &mut dyn ServerConnection;
+    fn server_connection(&self) -> &dyn ServerConnection;
+    fn server_connection_mut(&mut self) -> &mut dyn ServerConnection;
 }
 
 impl<W: WithServerConnection> ServerConnection for W {
-    fn get_name(&self) -> Result<String> {
-        self.get_server_connection().get_name()
+    fn name(&self) -> Result<String> {
+        self.server_connection().name()
     }
 
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
-        self.get_server_connection_mut().broadcast(message)
-    }
-
-    fn write_to_current(&mut self, message: &ServerMessage) -> Result<()> {
-        self.get_server_connection_mut().write_to_current(message)
+        self.server_connection_mut().broadcast(message)
     }
 
     fn rename(&mut self, new_name: &str) -> Result<()> {
-        self.get_server_connection_mut().rename(new_name)
+        self.server_connection_mut().rename(new_name)
     }
 
-    fn remove_current_writer(&mut self) -> Result<()> {
-        self.get_server_connection_mut().remove_current_writer()
+    fn remove_from_clients(&mut self) -> Result<()> {
+        self.server_connection_mut().remove_from_clients()
     }
 }
 
