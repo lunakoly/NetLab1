@@ -8,10 +8,9 @@ use std::net::{TcpStream};
 use shared::{Result, with_error_report};
 use shared::shared::{Shared};
 
-use shared::communication::xxson::{
+use shared::communication::xxson::messages::{
     ClientMessage,
 };
-
 use shared::communication::xxson::connection::{
     ClientContext,
     ClientConnection,

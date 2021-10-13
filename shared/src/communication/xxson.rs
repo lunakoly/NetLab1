@@ -1,15 +1,18 @@
 pub mod connection;
+pub mod messages;
 
 use std::io::{Read, Write};
 use std::marker::{PhantomData};
 use std::fmt::{Display, Formatter};
 
 use crate::{ErrorKind, Result};
+use crate::shared::{Shared};
 use crate::communication::{ReadMessage, WriteMessage};
 use crate::communication::bson::{BsonReader, BsonWriter};
 use crate::capped_reader::{CAPPED_READER_CAPACITY};
 
-use serde::{Serialize, Deserialize};
+use connection::{ClientContext, ServerContext};
+use messages::{ClientMessage, ServerMessage};
 
 use bson::doc;
 
@@ -22,40 +25,25 @@ pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM
 pub const MAXIMUM_TEXT_SIZE: usize = MAXIMUM_TEXT_MESSAGE_CONTENT / 2;
 pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ClientMessage {
-    Text { text: String },
-    Leave,
-    Rename { new_name: String },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ServerMessage {
-    Text { text: String, name: String, time: bson::DateTime },
-    NewUser { name: String, time: bson::DateTime },
-    Interrupt { name: String, time: bson::DateTime },
-    UserLeaves { name: String, time: bson::DateTime },
-    Support { text: String },
-    UserRenamed { old_name: String, new_name: String },
-}
-
-pub struct XXsonReader<R, M> {
+pub struct XXsonReader<R, M, C> {
     backend: BsonReader<R>,
     phantom: PhantomData<M>,
+    context: Option<Shared<C>>,
 }
 
-impl<R: Read, M> XXsonReader<R, M> {
-    pub fn new(reader: R) -> XXsonReader<R, M> {
+impl<R: Read, M, C> XXsonReader<R, M, C> {
+    pub fn new(reader: R) -> XXsonReader<R, M, C> {
         XXsonReader {
             backend: BsonReader::new(reader),
             phantom: PhantomData,
+            context: None,
         }
     }
 }
 
 // TODO: review
 
-impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
+impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage, ServerContext> {
     fn read_message(&mut self) -> Result<ClientMessage> {
         match self.backend.read_message() {
             Ok(it) => {
@@ -69,7 +57,7 @@ impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage> {
     }
 }
 
-impl<R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage> {
+impl<R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage, ClientContext> {
     fn read_message(&mut self) -> Result<ServerMessage> {
         match self.backend.read_message() {
             Ok(it) => {
@@ -83,21 +71,23 @@ impl<R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage> {
     }
 }
 
-pub struct XXsonWriter<W, M> {
+pub struct XXsonWriter<W, M, C> {
     backend: BsonWriter<W>,
     phantom: PhantomData<M>,
+    context: Option<Shared<C>>,
 }
 
-impl<W, M> XXsonWriter<W, M> {
-    pub fn new(stream: W) -> XXsonWriter<W, M> {
+impl<W, M, C> XXsonWriter<W, M, C> {
+    pub fn new(stream: W) -> XXsonWriter<W, M, C> {
         XXsonWriter {
             backend: BsonWriter::new(stream),
             phantom: PhantomData,
+            context: None,
         }
     }
 }
 
-impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage> {
+impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage, ClientContext> {
     fn write_message(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -115,7 +105,7 @@ impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage> {
     }
 }
 
-impl<W: Write> WriteMessage<ServerMessage> for XXsonWriter<W, ServerMessage> {
+impl<W: Write> WriteMessage<ServerMessage> for XXsonWriter<W, ServerMessage, ServerContext> {
     fn write_message(&mut self, message: &ServerMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 

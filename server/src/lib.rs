@@ -18,9 +18,12 @@ use shared::communication::xxson::connection::{
     build_server_connection,
 };
 
-use shared::communication::xxson::{
+use shared::communication::xxson::messages::{
     ServerMessage,
     ClientMessage,
+};
+
+use shared::communication::xxson::{
     MAXIMUM_TEXT_SIZE,
     MAXIMUM_NAME_SIZE,
 };

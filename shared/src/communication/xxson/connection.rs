@@ -7,7 +7,7 @@ use crate::communication::{ReadMessage, WriteMessage};
 
 use super::{XXsonReader, XXsonWriter};
 
-use super::{
+use super::messages::{
     ClientMessage,
     ServerMessage,
 };
@@ -47,15 +47,15 @@ impl<W: WithConnection> Connection for W {
 
 pub struct ClientContext {
     common: Context,
-    reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage>>,
-    writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage>>,
+    reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage, ClientContext>>,
+    writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage, ClientContext>>,
 }
 
 impl ClientContext {
     pub fn new(
         stream: Shared<TcpStream>,
-        reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage>>,
-        writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage>>,
+        reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage, ClientContext>>,
+        writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage, ClientContext>>,
     ) -> ClientContext {
         ClientContext {
             common: Context::new(stream),
@@ -113,8 +113,8 @@ pub struct ServerContext {
     common: Context,
     names: NamesMap,
     clients: Clients,
-    reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage>>,
-    writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage>>,
+    reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage, ServerContext>>,
+    writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage, ServerContext>>,
 }
 
 impl ServerContext {
@@ -122,8 +122,8 @@ impl ServerContext {
         stream: Shared<TcpStream>,
         names: NamesMap,
         clients: Clients,
-        reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage>>,
-        writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage>>,
+        reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage, ServerContext>>,
+        writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage, ServerContext>>,
     ) -> ServerContext {
         ServerContext {
             common: Context::new(stream),
@@ -294,11 +294,11 @@ pub fn build_client_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        XXsonReader::<_, ServerMessage>::new(reading_stream.clone())
+        XXsonReader::<_, ServerMessage, ClientContext>::new(reading_stream.clone())
     );
 
     let writer = Shared::new(
-        XXsonWriter::<_, ClientMessage>::new(writing_stream.clone())
+        XXsonWriter::<_, ClientMessage, ClientContext>::new(writing_stream.clone())
     );
 
     let reader_context = Shared::new(
@@ -309,10 +309,12 @@ pub fn build_client_connection(
 
     let writer_context = Shared::new(
         ClientContext::new(
-            writing_stream, reader, writer
+            writing_stream, reader.clone(), writer.clone()
         )
     );
 
+    reader.write()?.context = Some(reader_context.clone());
+    writer.write()?.context = Some(writer_context.clone());
     Ok((reader_context, writer_context))
 }
 
@@ -325,11 +327,11 @@ pub fn build_server_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        XXsonReader::<_, ClientMessage>::new(reading_stream.clone())
+        XXsonReader::<_, ClientMessage, ServerContext>::new(reading_stream.clone())
     );
 
     let writer = Shared::new(
-        XXsonWriter::<_, ServerMessage>::new(writing_stream.clone())
+        XXsonWriter::<_, ServerMessage, ServerContext>::new(writing_stream.clone())
     );
 
     let reader_context = Shared::new(
@@ -340,9 +342,11 @@ pub fn build_server_connection(
 
     let writer_context = Shared::new(
         ServerContext::new(
-            writing_stream, names, clients, reader, writer
+            writing_stream, names, clients, reader.clone(), writer.clone()
         )
     );
 
+    reader.write()?.context = Some(reader_context.clone());
+    writer.write()?.context = Some(writer_context.clone());
     Ok((reader_context, writer_context))
 }
