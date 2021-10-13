@@ -5,7 +5,7 @@ use std::borrow::{Borrow};
 
 use crate::{Result};
 
-pub type SafeMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
+pub type SharedMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 
 pub trait SimpleMap<K, V> {
     fn contains_key<Q>(&self, key: &Q) -> Result<bool>
@@ -27,7 +27,7 @@ pub trait SimpleMap<K, V> {
     fn insert(&self, key: K, value: V) -> Result<Option<V>>;
 }
 
-impl<K, V> SimpleMap<K, V> for SafeMap<K, V>
+impl<K, V> SimpleMap<K, V> for SharedMap<K, V>
 where
     K: Eq + Hash,
 {

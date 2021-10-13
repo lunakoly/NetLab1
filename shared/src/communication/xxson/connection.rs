@@ -1,7 +1,7 @@
 use std::net::{TcpStream, SocketAddr};
 
 use crate::{Result};
-use crate::safe_map::{SafeMap, SimpleMap};
+use crate::shared_map::{SharedMap, SimpleMap};
 use crate::shared_streams::{SharedStream};
 use crate::communication::{ReadMessage, WriteMessage};
 
@@ -98,8 +98,8 @@ pub trait WithClientConnection: WithConnection + ReadMessage<ServerMessage> + Wr
 
 impl<W: WithClientConnection> ClientConnection for W {}
 
-pub type NamesMap = SafeMap<String, String>;
-pub type Clients = SafeMap<String, ServerContext>;
+pub type NamesMap = SharedMap<String, String>;
+pub type Clients = SharedMap<String, ServerContext>;
 
 pub struct ServerContext {
     common: Context,
