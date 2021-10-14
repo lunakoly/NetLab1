@@ -13,7 +13,7 @@ use shared::communication::{
 };
 
 use shared::communication::xxson::connection::{
-    ServerConnection,
+    ServerSession,
     NamesMap,
     build_server_connection,
 };
@@ -29,7 +29,7 @@ use shared::communication::xxson::{
 };
 
 fn broadcast_interupt(
-    connection: &mut impl ServerConnection
+    connection: &mut impl ServerSession
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.name()?;
@@ -44,7 +44,7 @@ fn broadcast_interupt(
 }
 
 fn handle_client_mesage(
-    connection: &mut impl ServerConnection
+    connection: &mut impl ServerSession
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.name()?;
@@ -103,13 +103,18 @@ fn handle_client_mesage(
 
             connection.rename(&new_name)?;
         }
+        ClientMessage::ReceiveFile { name, .. } => {
+            let response = ServerMessage::NewFile { name };
+            connection.broadcast(&response)?;
+        }
+        _ => {}
     }
 
     Ok(MessageProcessing::Proceed)
 }
 
 fn handle_client_messages(
-    mut connection: impl ServerConnection
+    mut connection: impl ServerSession
 ) -> Result<()> {
     loop {
         let result = handle_client_mesage(&mut connection)?;
@@ -135,7 +140,7 @@ fn setup_names_mapping() -> NamesMap {
 }
 
 fn greet_user(
-    writing_connection: &mut impl ServerConnection,
+    writing_connection: &mut impl ServerSession,
 ) -> Result<String> {
     let time = chrono::Utc::now();
     let name = writing_connection.name()?;
@@ -178,7 +183,7 @@ fn handle_connection() -> Result<()> {
             with_error_report(|| handle_client_messages(reading_connection))
         });
 
-        clients.insert(address, writing_connection)?;
+        clients.insert(address, Shared::new(writing_connection))?;
     }
 
     Ok(())

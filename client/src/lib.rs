@@ -6,14 +6,13 @@ use std::iter::Peekable;
 use std::net::{TcpStream};
 
 use shared::{Result, with_error_report};
-use shared::shared::{Shared};
 
 use shared::communication::xxson::messages::{
     ClientMessage,
 };
 use shared::communication::xxson::connection::{
-    ClientContext,
-    ClientConnection,
+    ClientSessionData,
+    ClientSession,
     build_client_connection,
 };
 
@@ -27,7 +26,7 @@ use chars_reader::{IntoCharsReader, CharsReader};
 use commands::{Command, CommandProcessing};
 
 fn handle_server_message(
-    connection: &mut impl ClientConnection
+    connection: &mut impl ClientSession
 ) -> Result<MessageProcessing> {
     let message = match connection.read_message() {
         Ok(it) => it,
@@ -42,7 +41,7 @@ fn handle_server_message(
     Ok(MessageProcessing::Proceed)
 }
 
-fn handle_server_messages(mut connection: impl ClientConnection) -> Result<()> {
+fn handle_server_messages(mut connection: impl ClientSession) -> Result<()> {
     loop {
         let result = handle_server_message(&mut connection)?;
 
@@ -56,7 +55,7 @@ fn handle_server_messages(mut connection: impl ClientConnection) -> Result<()> {
 
 fn match_user_command_with_connection(
     command: Command,
-    connection: &mut impl ClientConnection,
+    connection: &mut impl ClientSession,
 ) -> Result<CommandProcessing> {
     match command {
         Command::Text { text } => {
@@ -73,6 +72,14 @@ fn match_user_command_with_connection(
 
             connection.write_message(&message)?;
         }
+        Command::UploadFile { name, path } => {
+            let message = ClientMessage::UploadFile { name, path };
+            connection.write_message(&message)?;
+        }
+        Command::DownloadFile { name, path } => {
+            let message = ClientMessage::DownloadFile { name, path };
+            connection.write_message(&message)?;
+        }
         _ => {}
     }
 
@@ -80,7 +87,7 @@ fn match_user_command_with_connection(
 }
 
 fn handle_user_command(
-    connection: &mut Option<impl ClientConnection>,
+    connection: &mut Option<impl ClientSession>,
     reader: &mut Peekable<CharsReader>,
 ) -> Result<CommandProcessing> {
     match commands::parse(reader) {
@@ -120,7 +127,7 @@ fn handle_user_commands() -> Result<()> {
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
 
-    let mut connection: Option<Shared<ClientContext>> = None;
+    let mut connection: Option<ClientSessionData> = None;
 
     loop {
         let result = handle_user_command(&mut connection, &mut reader)?;
