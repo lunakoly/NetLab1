@@ -1,6 +1,6 @@
 use std::thread;
 
-use std::net::{TcpListener};
+use std::net::{TcpListener, TcpStream};
 use std::collections::{HashMap};
 
 use shared::shared::{Shared};
@@ -15,6 +15,7 @@ use shared::communication::{
 use shared::communication::xxson::connection::{
     ServerSession,
     NamesMap,
+    Clients,
     build_server_connection,
 };
 
@@ -164,28 +165,38 @@ fn greet_user(
     Ok(writing_connection.remote_address()?.to_string())
 }
 
+fn handle_client(
+    stream: TcpStream,
+    names: NamesMap,
+    clients: Clients,
+) -> Result<()> {
+    let (
+        reading_connection,
+        mut writing_connection
+    ) = build_server_connection(
+        stream,
+        names,
+        clients.clone(),
+    )?;
+
+    let address = greet_user(&mut writing_connection)?;
+    clients.insert(address, Shared::new(writing_connection))?;
+
+    with_error_report(|| handle_client_messages(reading_connection))
+}
+
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
     let clients = Shared::new(HashMap::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {
-        let (
-            reading_connection,
-            mut writing_connection
-        ) = build_server_connection(
-            incomming?,
-            names.clone(),
-            clients.clone(),
-        )?;
-
-        let address = greet_user(&mut writing_connection)?;
+        let the_names = names.clone();
+        let the_clients = clients.clone();
 
         thread::spawn(|| {
-            with_error_report(|| handle_client_messages(reading_connection))
+            with_error_report(|| handle_client(incomming?, the_names, the_clients))
         });
-
-        clients.insert(address, Shared::new(writing_connection))?;
     }
 
     Ok(())
