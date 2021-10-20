@@ -6,7 +6,7 @@ use bson::{DateTime};
 pub enum CommonMessage {
     // The client never creates these manually,
     // and the server never reads these
-    SendFile { name: String, size: usize, id: usize },
+    // SendFile { name: String, size: usize, id: usize },
     Chunk { data: Vec<u8>, id: usize },
 }
 
@@ -26,7 +26,10 @@ pub enum ClientMessage {
     // The client never creates these manually,
     // and the server never reads these
     Common { common: CommonMessage },
-    RequestFile { name: String },
+    RequestFileUpload { name: String, size: usize, id: usize },
+    RequestFileDownload { name: String },
+    AgreeFileDownload { id: usize },
+    DeclineFileDownload { id: usize },
 
     // The client never creates these manually,
     // but the server reads these
@@ -48,9 +51,14 @@ pub enum ServerMessage {
     // The server never creates these manually,
     // and the client never reads these
     Common { common: CommonMessage },
-    DeclineFile { reason: String },
+    AgreeFileUpload { id: usize },
+    DeclineFileUpload { id: usize, reason: String },
+    AgreeFileDownload { name: String, size: usize, id: usize },
+    DeclineFileDownload { name: String, reason: String },
 
     // The server never creates these manually,
     // but the client reads these
     ReceiveFile { name: String, path: String },
+    DeclineFileUpload2 { name: String, reason: String },
+    DeclineFileDownload2 { name: String, reason: String },
 }

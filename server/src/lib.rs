@@ -101,7 +101,9 @@ fn handle_client_mesage(
                 return broadcast_interupt(connection);
             }
 
-            connection.rename(&new_name)?;
+            if let Some(it) = connection.rename(&new_name)? {
+                connection.write_message(&it)?;
+            };
         }
         ClientMessage::ReceiveFile { name, .. } => {
             let response = ServerMessage::NewFile { name };

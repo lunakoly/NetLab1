@@ -49,6 +49,7 @@ pub trait Connection {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()>;
 
@@ -65,7 +66,11 @@ pub trait Connection {
         id: usize,
     ) -> Result<bool>;
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>>;
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>>;
+
+    fn sharers_map(&mut self) -> Result<FileSharers>;
 }
 
 impl Connection for Context {
@@ -82,12 +87,13 @@ impl Connection for Context {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()> {
         let sharer = FileSharer {
             name: name.to_owned(),
             path: path.to_owned(),
-            file: File::create(path)?,
+            file: file,
             size: 0,
             written: 0,
         };
@@ -137,9 +143,17 @@ impl Connection for Context {
         Ok(sharer.written >= sharer.size)
     }
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
+        self.sharers.remove(name)
+    }
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         let key = format!("{}", id);
         self.sharers.remove(&key)
+    }
+
+    fn sharers_map(&mut self) -> Result<FileSharers> {
+        Ok(self.sharers.clone())
     }
 }
 
@@ -160,9 +174,10 @@ impl<W: WithConnection> Connection for W {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()> {
-        self.connection_mut().prepare_sharer(path, name)
+        self.connection_mut().prepare_sharer(path, file, name)
     }
 
     fn promote_sharer(
@@ -182,8 +197,16 @@ impl<W: WithConnection> Connection for W {
         self.connection_mut().accept_chunk(data, id)
     }
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
+        self.connection_mut().remove_unpromoted_sharer(name)
+    }
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.connection_mut().remove_sharer(id)
+    }
+
+    fn sharers_map(&mut self) -> Result<FileSharers> {
+        self.connection_mut().sharers_map()
     }
 }
 
@@ -232,9 +255,10 @@ impl Connection for Shared<ClientContext> {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()> {
-        self.inner.write()?.prepare_sharer(path, name)
+        self.inner.write()?.prepare_sharer(path, file, name)
     }
 
     fn promote_sharer(
@@ -254,8 +278,16 @@ impl Connection for Shared<ClientContext> {
         self.inner.write()?.accept_chunk(data, id)
     }
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
+        self.inner.write()?.remove_unpromoted_sharer(name)
+    }
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.inner.write()?.remove_sharer(id)
+    }
+
+    fn sharers_map(&mut self) -> Result<FileSharers> {
+        self.inner.write()?.sharers_map()
     }
 }
 
@@ -411,9 +443,10 @@ impl Connection for Shared<ServerContext> {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()> {
-        self.inner.write()?.prepare_sharer(path, name)
+        self.inner.write()?.prepare_sharer(path, file, name)
     }
 
     fn promote_sharer(
@@ -433,8 +466,16 @@ impl Connection for Shared<ServerContext> {
         self.inner.write()?.accept_chunk(data, id)
     }
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
+        self.inner.write()?.remove_unpromoted_sharer(name)
+    }
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.inner.write()?.remove_sharer(id)
+    }
+
+    fn sharers_map(&mut self) -> Result<FileSharers> {
+        self.inner.write()?.sharers_map()
     }
 }
 
@@ -506,9 +547,10 @@ impl Connection for ClientSessionData {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()> {
-        self.context.prepare_sharer(path, name)
+        self.context.prepare_sharer(path, file, name)
     }
 
     fn promote_sharer(
@@ -528,8 +570,16 @@ impl Connection for ClientSessionData {
         self.context.accept_chunk(data, id)
     }
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
+        self.context.remove_unpromoted_sharer(name)
+    }
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.context.remove_sharer(id)
+    }
+
+    fn sharers_map(&mut self) -> Result<FileSharers> {
+        self.context.sharers_map()
     }
 }
 
@@ -589,9 +639,10 @@ impl Connection for ServerSessionData {
     fn prepare_sharer(
         &mut self,
         path: &str,
+        file: File,
         name: &str,
     ) -> Result<()> {
-        self.context.prepare_sharer(path, name)
+        self.context.prepare_sharer(path, file, name)
     }
 
     fn promote_sharer(
@@ -611,8 +662,16 @@ impl Connection for ServerSessionData {
         self.context.accept_chunk(data, id)
     }
 
+    fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
+        self.context.remove_unpromoted_sharer(name)
+    }
+
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.context.remove_sharer(id)
+    }
+
+    fn sharers_map(&mut self) -> Result<FileSharers> {
+        self.context.sharers_map()
     }
 }
 
