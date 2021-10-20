@@ -1,11 +1,11 @@
 use std::iter::{Peekable};
+use std::path::{Path};
 
 use crate::chars_reader::{CharsReader};
 
-use shared::shared::{Shared};
 use shared::communication::{DEFAULT_PORT};
 use shared::communication::xxson::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
-use shared::communication::xxson::connection::{ClientContext};
+use shared::communication::xxson::connection::{ClientSessionData};
 
 pub enum Command {
     Nothing,
@@ -13,12 +13,14 @@ pub enum Command {
     Text { text: String },
     Rename { new_name: String },
     Connect { address: String },
+    UploadFile { name: String, path: String },
+    DownloadFile { name: String, path: String },
 }
 
 pub enum CommandProcessing {
     Proceed,
     Stop,
-    Connect(Shared<ClientContext>)
+    Connect(ClientSessionData)
 }
 
 fn is_blank(symbol: char) -> bool {
@@ -60,6 +62,58 @@ fn parse_connect(words: &[String]) -> Command {
     }
 }
 
+fn check_upload(path: String, name: String) -> Command {
+    if !Path::new(&path).exists() {
+        println!("(Console) No, I can't find such a file");
+        return Command::Nothing;
+    }
+
+    Command::UploadFile { path, name }
+}
+
+fn parse_upload(words: &[String]) -> Command {
+    if words.len() >= 3 {
+        check_upload(
+            words[1].clone(),
+            words[2].clone()
+        )
+    } else if words.len() >= 2 {
+        check_upload(
+            words[1].clone(),
+            words[1].rsplit('/').next().unwrap_or("unnamed.txt").to_owned()
+        )
+    } else {
+        println!("(Console) Everyone keeps telling 'send a file', 'get a file', but only the few of them actually know the right path");
+        Command::Nothing
+    }
+}
+
+fn check_download(path: String, name: String) -> Command {
+    if Path::new(&path).exists() {
+        println!("(Console) No, wait, the file already exists!");
+        return Command::Nothing;
+    }
+
+    Command::DownloadFile { path, name }
+}
+
+fn parse_download(words: &[String]) -> Command {
+    if words.len() >= 3 {
+        check_download(
+            words[2].clone(),
+            words[1].clone(),
+        )
+    } else if words.len() >= 2 {
+        check_download(
+            words[1].clone(),
+            words[1].clone(),
+        )
+    } else {
+        println!("(Console) There's one crucial ingredient missing. Go on, try to find it out");
+        Command::Nothing
+    }
+}
+
 fn parse_words<'a>(input: &mut Peekable<CharsReader<'a>>) -> Vec<String> {
     let mut words = vec!["".to_owned()];
 
@@ -93,6 +147,10 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
         parse_rename(&words)
     } else if words[0] == "/connect" || words[0] == "/c" {
         parse_connect(&words)
+    } else if words[0] == "/upload" || words[0] == "/u" {
+        parse_upload(&words)
+    } else if words[0] == "/download" || words[0] == "/d" {
+        parse_download(&words)
     } else {
         println!("(Console) Well, yea, you issued a command, but I missed it, sorry...");
         Command::Nothing

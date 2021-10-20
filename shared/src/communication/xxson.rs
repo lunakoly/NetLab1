@@ -1,18 +1,32 @@
 pub mod connection;
 pub mod messages;
+pub mod sharers;
 
 use std::io::{Read, Write};
 use std::marker::{PhantomData};
 use std::fmt::{Display, Formatter};
+use std::path::{Path};
+use std::fs::{File};
 
 use crate::{ErrorKind, Result};
 use crate::shared::{Shared};
-use crate::communication::{ReadMessage, WriteMessage};
 use crate::communication::bson::{BsonReader, BsonWriter};
 use crate::capped_reader::{CAPPED_READER_CAPACITY};
 
-use connection::{ClientContext, ServerContext};
-use messages::{ClientMessage, ServerMessage};
+use crate::communication::{
+    ReadMessage,
+    ReadMessageWithContext,
+    WriteMessage,
+    WriteMessageWithContext,
+};
+
+use connection::{
+    ClientContext,
+    ServerContext,
+    Connection,
+};
+
+use messages::{CommonMessage, ClientMessage, ServerMessage};
 
 use bson::doc;
 
@@ -25,10 +39,12 @@ pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM
 pub const MAXIMUM_TEXT_SIZE: usize = MAXIMUM_TEXT_MESSAGE_CONTENT / 2;
 pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
 
+pub const CHUNK_SIZE: usize = 100;
+
 pub struct XXsonReader<R, M, C> {
     backend: BsonReader<R>,
     phantom: PhantomData<M>,
-    context: Option<Shared<C>>,
+    phantom2: PhantomData<C>,
 }
 
 impl<R: Read, M, C> XXsonReader<R, M, C> {
@@ -36,45 +52,293 @@ impl<R: Read, M, C> XXsonReader<R, M, C> {
         XXsonReader {
             backend: BsonReader::new(reader),
             phantom: PhantomData,
-            context: None,
+            phantom2: PhantomData,
         }
     }
 }
 
-// TODO: review
+impl<R: Read> XXsonReader<R, ClientMessage, Shared<ServerContext>> {
+    fn read_single_message(&mut self) -> Result<ClientMessage> {
+        let it = self.backend.read_message()?;
+        let message: ClientMessage = bson::from_bson(it.into())?;
+        Ok(message)
+    }
 
-impl<R: Read> ReadMessage<ClientMessage> for XXsonReader<R, ClientMessage, ServerContext> {
-    fn read_message(&mut self) -> Result<ClientMessage> {
-        match self.backend.read_message() {
-            Ok(it) => {
-                let message: ClientMessage = bson::from_bson(it.into())?;
-                Ok(message)
+    fn process_implicitly<W>(
+        &mut self,
+        mut context: Shared<ServerContext>,
+        mut writer: Shared<W>,
+    ) -> Result<Option<ClientMessage>>
+    where
+        W: WriteMessageWithContext<CommonMessage, Shared<ServerContext>>
+         + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>,
+    {
+        let message = self.read_single_message()?;
+
+        match &message {
+            ClientMessage::Common { common } => match common {
+                CommonMessage::Chunk { data, id } => {
+                    let done = context.accept_chunk(data, id.clone())?;
+
+                    if !done {
+                        return Ok(None);
+                    }
+
+                    let sharer = if let Some(that) = context.remove_sharer(id.clone())? {
+                        that
+                    } else {
+                        return Ok(None)
+                    };
+
+                    let notification = ClientMessage::ReceiveFile {
+                        name: sharer.name,
+                        path: sharer.path,
+                    };
+
+                    return Ok(Some(notification))
+                }
             }
-            Err(error) => {
-                Err(error.into())
+            ClientMessage::RequestFileUpload { name, size, id } => {
+                let response = if Path::new(name).exists() {
+                    ServerMessage::DeclineFileUpload {
+                        id: id.clone(),
+                        reason: "There's already a file with such a name".to_owned(),
+                    }
+                } else {
+                    context.prepare_sharer(name, File::create(name)?, name)?;
+                    context.promote_sharer(name, size.clone(), id.clone())?;
+
+                    ServerMessage::AgreeFileUpload {
+                        id: id.clone(),
+                    }
+                };
+
+                writer.write_message_with_context(&response, context)?;
+            }
+            ClientMessage::RequestFileDownload { name } => {
+                let response = if !Path::new(name).exists() {
+                    ServerMessage::DeclineFileDownload {
+                        name: name.clone(),
+                        reason: "There's no such a file".to_owned(),
+                    }
+                } else {
+                    let id = context.free_id()?;
+
+                    let file = File::open(name)?;
+                    let size = file.metadata()?.len() as usize;
+
+                    context.prepare_sharer(name, file, name)?;
+                    context.promote_sharer(name, size.clone(), id.clone())?;
+
+                    ServerMessage::AgreeFileDownload {
+                        name: name.clone(),
+                        id: id.clone(),
+                        size: size,
+                    }
+                };
+
+                writer.write_message_with_context(&response, context)?;
+            }
+            ClientMessage::AgreeFileDownload { id } => {
+                let mut file: File;
+                let size: usize;
+
+                {
+                    let sharers = context.sharers_map()?;
+                    let mut locked = sharers.write()?;
+                    let key = format!("{}", id);
+
+                    let sharer = if let Some(it) = locked.get_mut(&key) {
+                        it
+                    } else {
+                        return Ok(None)
+                    };
+
+                    file = sharer.file.try_clone()?;
+                    size = sharer.size.clone();
+                }
+
+                writer.send_file(context, &mut file, size, id.clone())?;
+            }
+            ClientMessage::DeclineFileDownload { id } => {
+                // Well, they asked for the file, but
+                // now they say they can't accept the size.
+                context.remove_sharer(id.clone())?;
+                return Ok(None)
+            }
+            _ => {
+                return Ok(Some(message))
             }
         }
+
+        Ok(None)
     }
 }
 
-impl<R: Read> ReadMessage<ServerMessage> for XXsonReader<R, ServerMessage, ClientContext> {
-    fn read_message(&mut self) -> Result<ServerMessage> {
-        match self.backend.read_message() {
-            Ok(it) => {
-                let message: ServerMessage = bson::from_bson(it.into())?;
-                Ok(message)
+impl<R, W> ReadMessageWithContext<
+    ClientMessage,
+    Shared<ServerContext>,
+    Shared<W>
+> for XXsonReader<
+    R,
+    ClientMessage,
+    Shared<ServerContext>
+> where
+    R: Read,
+    W: WriteMessageWithContext<CommonMessage, Shared<ServerContext>>
+     + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>,
+{
+    fn read_message_with_context(
+        &mut self,
+        context: Shared<ServerContext>,
+        writer: Shared<W>,
+    ) -> Result<ClientMessage> {
+        let mut it = self.process_implicitly(context.clone(), writer.clone())?;
+
+        while let None = it {
+            it = self.process_implicitly(context.clone(), writer.clone())?;
+        }
+
+        Ok(it.unwrap())
+    }
+}
+
+impl<R: Read> XXsonReader<R, ServerMessage, Shared<ClientContext>> {
+    fn read_single_message(&mut self) -> Result<ServerMessage> {
+        let it = self.backend.read_message()?;
+        let message: ServerMessage = bson::from_bson(it.into())?;
+        Ok(message)
+    }
+
+    fn process_implicitly<W>(
+        &mut self,
+        mut context: Shared<ClientContext>,
+        mut writer: Shared<W>
+    ) -> Result<Option<ServerMessage>>
+    where
+        W: WriteMessageWithContext<CommonMessage, Shared<ClientContext>>
+         + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>,
+    {
+        let message = self.read_single_message()?;
+
+        match &message {
+            ServerMessage::Common { common } => match common {
+                CommonMessage::Chunk { data, id } => {
+                    let done = context.accept_chunk(data, id.clone())?;
+
+                    if !done {
+                        return Ok(None);
+                    }
+
+                    let sharer = if let Some(that) = context.remove_sharer(id.clone())? {
+                        that
+                    } else {
+                        return Ok(None)
+                    };
+
+                    let notification = ServerMessage::ReceiveFile {
+                        name: sharer.name,
+                        path: sharer.path,
+                    };
+
+                    return Ok(Some(notification))
+                }
             }
-            Err(error) => {
-                Err(error.into())
+            ServerMessage::AgreeFileUpload { id } => {
+                let mut file: File;
+                let size: usize;
+
+                {
+                    let sharers = context.sharers_map()?;
+                    let mut locked = sharers.write()?;
+                    let key = format!("{}", id);
+
+                    let sharer = if let Some(it) = locked.get_mut(&key) {
+                        it
+                    } else {
+                        return Ok(None)
+                    };
+
+                    file = sharer.file.try_clone()?;
+                    size = sharer.size.clone();
+                }
+
+                writer.send_file(context, &mut file, size, id.clone())?;
+            }
+            ServerMessage::DeclineFileUpload { id, reason } => {
+                let sharer = if let Some(it) = context.remove_sharer(id.clone())? {
+                    it
+                } else {
+                    return Ok(None)
+                };
+
+                let forwarded = ServerMessage::DeclineFileUpload2 {
+                    name: sharer.name,
+                    reason: reason.clone(),
+                };
+
+                return Ok(Some(forwarded))
+            }
+            ServerMessage::AgreeFileDownload { name, size, id } => {
+                context.promote_sharer(name, size.clone(), id.clone())?;
+
+                let response = ClientMessage::AgreeFileDownload {
+                    id: id.clone(),
+                };
+
+                writer.write_message_with_context(&response, context)?;
+            }
+            ServerMessage::DeclineFileDownload { name, reason } => {
+                context.remove_unpromoted_sharer(name)?;
+
+                let forwarded = ServerMessage::DeclineFileDownload2 {
+                    name: name.clone(),
+                    reason: reason.clone(),
+                };
+
+                return Ok(Some(forwarded))
+            }
+            _ => {
+                return Ok(Some(message))
             }
         }
+
+        Ok(None)
+    }
+}
+
+impl<R, W> ReadMessageWithContext<
+    ServerMessage,
+    Shared<ClientContext>,
+    Shared<W>,
+> for XXsonReader<
+    R,
+    ServerMessage,
+    Shared<ClientContext>
+> where
+    R: Read,
+    W: WriteMessageWithContext<CommonMessage, Shared<ClientContext>>
+     + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>,
+{
+    fn read_message_with_context(
+        &mut self,
+        context: Shared<ClientContext>,
+        writer: Shared<W>,
+    ) -> Result<ServerMessage> {
+        let mut it = self.process_implicitly(context.clone(), writer.clone())?;
+
+        while let None = it {
+            it = self.process_implicitly(context.clone(), writer.clone())?;
+        }
+
+        Ok(it.unwrap())
     }
 }
 
 pub struct XXsonWriter<W, M, C> {
     backend: BsonWriter<W>,
     phantom: PhantomData<M>,
-    context: Option<Shared<C>>,
+    phantom2: PhantomData<C>,
 }
 
 impl<W, M, C> XXsonWriter<W, M, C> {
@@ -82,13 +346,13 @@ impl<W, M, C> XXsonWriter<W, M, C> {
         XXsonWriter {
             backend: BsonWriter::new(stream),
             phantom: PhantomData,
-            context: None,
+            phantom2: PhantomData,
         }
     }
 }
 
-impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage, ClientContext> {
-    fn write_message(&mut self, message: &ClientMessage) -> Result<()> {
+impl<W: Write> XXsonWriter<W, ClientMessage, Shared<ClientContext>> {
+    fn write_single_message(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
         if let Some(it) = serialized.as_document() {
@@ -103,16 +367,188 @@ impl<W: Write> WriteMessage<ClientMessage> for XXsonWriter<W, ClientMessage, Cli
             Err(ErrorKind::NothingToRead.into())
         }
     }
+
+    fn process_implicitly(
+        &mut self,
+        message: &ClientMessage,
+        mut context: Shared<ClientContext>,
+    ) -> Result<()> {
+        match message {
+            ClientMessage::UploadFile { name, path } => {
+                let id = context.free_id()?;
+
+                let file = File::open(path)?;
+                let size = file.metadata()?.len() as usize;
+
+                let request = ClientMessage::RequestFileUpload {
+                    name: name.clone(),
+                    size: size,
+                    id: id,
+                };
+
+                context.prepare_sharer(path, file, name)?;
+                context.promote_sharer(name, size, id)?;
+
+                self.write_message_with_context(&request, context)?;
+            }
+            ClientMessage::DownloadFile { name, path } => {
+                context.prepare_sharer(path, File::create(path)?, name)?;
+
+                let inner = ClientMessage::RequestFileDownload {
+                    name: name.clone(),
+                };
+
+                self.write_single_message(&inner)?;
+            }
+            _ => {
+                self.write_single_message(message)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
-impl<W: Write> WriteMessage<ServerMessage> for XXsonWriter<W, ServerMessage, ServerContext> {
-    fn write_message(&mut self, message: &ServerMessage) -> Result<()> {
+impl<W: Write> WriteMessageWithContext<
+    ClientMessage,
+    Shared<ClientContext>
+> for XXsonWriter<
+    W,
+    ClientMessage,
+    Shared<ClientContext>
+> {
+    fn write_message_with_context(
+        &mut self,
+        message: &ClientMessage,
+        context: Shared<ClientContext>,
+    ) -> Result<()> {
+        self.process_implicitly(message, context)
+    }
+}
+
+impl<W: Write> WriteMessageWithContext<
+    CommonMessage,
+    Shared<ClientContext>,
+> for XXsonWriter<
+    W,
+    ClientMessage,
+    Shared<ClientContext>,
+> {
+    fn write_message_with_context(
+        &mut self,
+        message: &CommonMessage,
+        _: Shared<ClientContext>,
+    ) -> Result<()> {
+        let document = ClientMessage::Common {
+            common: message.clone(),
+        };
+
+        self.write_single_message(&document)
+    }
+}
+
+impl<W: Write> XXsonWriter<W, ServerMessage, Shared<ServerContext>> {
+    fn write_single_message(&mut self, message: &ServerMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
-        match serialized.as_document() {
-            Some(document) => self.backend.write_message(document),
-            None => Err(ErrorKind::NothingToRead.into())
+        if let Some(it) = serialized.as_document() {
+            self.backend.write_message(it)
+        } else if let Some(it) = serialized.as_str() {
+            let wrapper = doc! {
+                it: {}
+            };
+
+            self.backend.write_message(&wrapper)
+        } else {
+            Err(ErrorKind::NothingToRead.into())
         }
+    }
+
+    fn process_implicitly(
+        &mut self,
+        message: &ServerMessage,
+        _: Shared<ServerContext>,
+    ) -> Result<()> {
+        self.write_single_message(message)
+    }
+}
+
+impl<W: Write> WriteMessageWithContext<
+    ServerMessage,
+    Shared<ServerContext>,
+> for XXsonWriter<
+    W,
+    ServerMessage,
+    Shared<ServerContext>,
+> {
+    fn write_message_with_context(
+        &mut self,
+        message: &ServerMessage,
+        context: Shared<ServerContext>,
+    ) -> Result<()> {
+        self.process_implicitly(message, context)
+    }
+}
+
+impl<W: Write> WriteMessageWithContext<
+    CommonMessage,
+    Shared<ServerContext>,
+> for XXsonWriter<
+    W,
+    ServerMessage,
+    Shared<ServerContext>
+> {
+    fn write_message_with_context(
+        &mut self,
+        message: &CommonMessage,
+        _: Shared<ServerContext>,
+    ) -> Result<()> {
+        let document = ServerMessage::Common {
+            common: message.clone(),
+        };
+
+        self.write_single_message(&document)
+    }
+}
+
+trait SendFile<C> {
+    fn send_file(
+        &mut self,
+        context: C,
+        file: &mut File,
+        size: usize,
+        id: usize
+    ) -> Result<()>;
+}
+
+impl<C, W> SendFile<C> for W
+where
+    W: WriteMessageWithContext<CommonMessage, C>,
+    C: Clone,
+{
+    fn send_file(
+        &mut self,
+        context: C,
+        file: &mut File,
+        size: usize,
+        id: usize
+    ) -> Result<()> {
+        let mut written = 0usize;
+
+        while written < size {
+            let mut buffer = [0u8; CHUNK_SIZE];
+            let read = file.read(&mut buffer)?;
+            written += read;
+
+            let chunk = CommonMessage::Chunk {
+                data: buffer.to_vec(),
+                id: id.clone(),
+            };
+
+            self.write_message_with_context(&chunk, context.clone())?;
+        }
+
+        Ok(())
     }
 }
 
@@ -138,6 +574,35 @@ impl Display for ServerMessage {
             }
             ServerMessage::UserRenamed { old_name, new_name } => {
                 write!(formatter, "~~ He once used to be {}, but now he is {} ~~", &old_name, &new_name)
+            }
+            ServerMessage::NewFile { name } => {
+                write!(formatter, "~~ And the new file is {} ~~", &name)
+            }
+            ServerMessage::ReceiveFile { name, path } => {
+                write!(formatter, "(Console) Downloaded {} and saved to {}", &name, &path)
+            }
+            ServerMessage::AgreeFileUpload { id } => {
+                write!(formatter, "(Server) Sure, I'm ready to accept #{}", &id)
+            }
+            ServerMessage::DeclineFileUpload { id, reason } => {
+                write!(formatter, "(Server) Nah, wait with your #{}. {}", &id, &reason)
+            }
+            ServerMessage::AgreeFileDownload { name, size, id } => {
+                write!(formatter, "(Server) Sure, I'm ready to give you {} ({} bytes, #{})", &name, &size, &id)
+            }
+            ServerMessage::DeclineFileDownload { name, reason } => {
+                write!(formatter, "(Server) Nah, I won't give you {}. {}", &name, &reason)
+            }
+            ServerMessage::DeclineFileUpload2 { name, reason } => {
+                write!(formatter, "(Server) Nah, wait with your #{}. {}", &name, &reason)
+            }
+            ServerMessage::DeclineFileDownload2 { name, reason } => {
+                write!(formatter, "(Server) Nah, I won't give you {}. {}", &name, &reason)
+            }
+            ServerMessage::Common { common } => match common {
+                CommonMessage::Chunk { .. } => {
+                    write!(formatter, "(Server) Here are some bytes for you")
+                }
             }
         }
     }
