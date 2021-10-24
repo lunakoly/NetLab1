@@ -171,7 +171,7 @@ impl<T> From<std::sync::PoisonError<T>> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn with_error_report<F: FnOnce() -> Result<()>>(run: F) -> Result<()> {
+pub fn with_error_report<F: FnOnce() -> Result<()>>(run: F) {
     let result = run();
 
     match &result {
@@ -180,6 +180,4 @@ pub fn with_error_report<F: FnOnce() -> Result<()>>(run: F) -> Result<()> {
         }
         _ => {}
     };
-
-    result
 }

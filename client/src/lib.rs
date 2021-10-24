@@ -151,8 +151,5 @@ fn handle_connection() -> Result<()> {
 }
 
 pub fn start() {
-    match with_error_report(handle_connection) {
-        Ok(_) => println!("Good."),
-        Err(_) => println!("Bad."),
-    }
+    with_error_report(handle_connection);
 }

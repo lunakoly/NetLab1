@@ -182,7 +182,8 @@ fn handle_client(
     let address = greet_user(&mut writing_connection)?;
     clients.insert(address, Shared::new(writing_connection))?;
 
-    with_error_report(|| handle_client_messages(reading_connection))
+    with_error_report(|| handle_client_messages(reading_connection));
+    Ok(())
 }
 
 fn handle_connection() -> Result<()> {
@@ -203,8 +204,5 @@ fn handle_connection() -> Result<()> {
 }
 
 pub fn start() {
-    match with_error_report(handle_connection) {
-        Ok(_) => println!("Good."),
-        Err(_) => println!("Bad."),
-    }
+    with_error_report(handle_connection);
 }

@@ -10,6 +10,7 @@ use std::fs::{File};
 
 use crate::{ErrorKind, Result};
 use crate::shared::{Shared};
+use crate::errors::{with_error_report};
 use crate::communication::bson::{BsonReader, BsonWriter};
 use crate::capped_reader::{CAPPED_READER_CAPACITY};
 
@@ -71,7 +72,8 @@ impl<R: Read> XXsonReader<R, ClientMessage, Shared<ServerContext>> {
     ) -> Result<Option<ClientMessage>>
     where
         W: WriteMessageWithContext<CommonMessage, Shared<ServerContext>>
-         + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>,
+         + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>
+         + Send + Sync + 'static,
     {
         let message = self.read_single_message()?;
 
@@ -140,7 +142,7 @@ impl<R: Read> XXsonReader<R, ClientMessage, Shared<ServerContext>> {
                 writer.write_message_with_context(&response, context)?;
             }
             ClientMessage::AgreeFileDownload { id } => {
-                let mut file: File;
+                let file: File;
                 let size: usize;
 
                 {
@@ -158,7 +160,7 @@ impl<R: Read> XXsonReader<R, ClientMessage, Shared<ServerContext>> {
                     size = sharer.size.clone();
                 }
 
-                writer.send_file(context, &mut file, size, id.clone())?;
+                writer.send_file_non_blocking(context, file, size, id.clone())?;
             }
             ClientMessage::DeclineFileDownload { id } => {
                 // Well, they asked for the file, but
@@ -186,7 +188,8 @@ impl<R, W> ReadMessageWithContext<
 > where
     R: Read,
     W: WriteMessageWithContext<CommonMessage, Shared<ServerContext>>
-     + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>,
+     + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>
+     + Send + Sync + 'static,
 {
     fn read_message_with_context(
         &mut self,
@@ -217,7 +220,8 @@ impl<R: Read> XXsonReader<R, ServerMessage, Shared<ClientContext>> {
     ) -> Result<Option<ServerMessage>>
     where
         W: WriteMessageWithContext<CommonMessage, Shared<ClientContext>>
-         + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>,
+         + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>
+         + Send + Sync + 'static,
     {
         let message = self.read_single_message()?;
 
@@ -245,7 +249,7 @@ impl<R: Read> XXsonReader<R, ServerMessage, Shared<ClientContext>> {
                 }
             }
             ServerMessage::AgreeFileUpload { id } => {
-                let mut file: File;
+                let file: File;
                 let size: usize;
 
                 {
@@ -263,7 +267,7 @@ impl<R: Read> XXsonReader<R, ServerMessage, Shared<ClientContext>> {
                     size = sharer.size.clone();
                 }
 
-                writer.send_file(context, &mut file, size, id.clone())?;
+                writer.send_file_non_blocking(context, file, size, id.clone())?;
             }
             ServerMessage::DeclineFileUpload { id, reason } => {
                 let sharer = if let Some(it) = context.remove_sharer(id.clone())? {
@@ -318,7 +322,8 @@ impl<R, W> ReadMessageWithContext<
 > where
     R: Read,
     W: WriteMessageWithContext<CommonMessage, Shared<ClientContext>>
-     + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>,
+     + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>
+     + Send + Sync + 'static,
 {
     fn read_message_with_context(
         &mut self,
@@ -519,12 +524,23 @@ trait SendFile<C> {
         size: usize,
         id: usize
     ) -> Result<()>;
+
+    fn send_file_non_blocking(
+        &mut self,
+        context: C,
+        file: File,
+        size: usize,
+        id: usize
+    ) -> Result<()>;
 }
 
 impl<C, W> SendFile<C> for W
 where
-    W: WriteMessageWithContext<CommonMessage, C>,
-    C: Clone,
+    W: WriteMessageWithContext<CommonMessage, C>
+     + Clone
+     + Send + Sync + 'static,
+    C: Clone
+     + Send + Sync + 'static,
 {
     fn send_file(
         &mut self,
@@ -534,6 +550,7 @@ where
         id: usize
     ) -> Result<()> {
         let mut written = 0usize;
+        let mut old_time_point = Local::now();
 
         while written < size {
             let mut buffer = [0u8; CHUNK_SIZE];
@@ -546,7 +563,35 @@ where
             };
 
             self.write_message_with_context(&chunk, context.clone())?;
+
+            let time_point = Local::now();
+
+            if (time_point - old_time_point).num_seconds() >= 1 {
+                old_time_point = time_point;
+                println!("(Console) File #{} > {}%", id.clone(), written * 100 / size);
+            }
         }
+
+        Ok(())
+    }
+
+    fn send_file_non_blocking(
+        &mut self,
+        context: C,
+        file: File,
+        size: usize,
+        id: usize
+    ) -> Result<()> {
+        let the_writer = self.clone();
+
+        std::thread::spawn(move || {
+            let mut owned_file = file;
+            let mut owned_writer = the_writer;
+
+            with_error_report(|| -> Result<()> {
+                owned_writer.send_file(context, &mut owned_file, size, id)
+            });
+        });
 
         Ok(())
     }
