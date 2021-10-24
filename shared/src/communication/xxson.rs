@@ -42,23 +42,21 @@ pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
 
 pub const CHUNK_SIZE: usize = 100;
 
-pub struct XXsonReader<R, M, C> {
+pub struct XXsonReader<R, C> {
     backend: BsonReader<R>,
-    phantom: PhantomData<M>,
-    phantom2: PhantomData<C>,
+    phantom: PhantomData<C>,
 }
 
-impl<R: Read, M, C> XXsonReader<R, M, C> {
-    pub fn new(reader: R) -> XXsonReader<R, M, C> {
+impl<R: Read, C> XXsonReader<R, C> {
+    pub fn new(reader: R) -> XXsonReader<R, C> {
         XXsonReader {
             backend: BsonReader::new(reader),
             phantom: PhantomData,
-            phantom2: PhantomData,
         }
     }
 }
 
-impl<R: Read> XXsonReader<R, ClientMessage, Shared<ServerContext>> {
+impl<R: Read> XXsonReader<R, Shared<ServerContext>> {
     fn read_single_message(&mut self) -> Result<ClientMessage> {
         let it = self.backend.read_message()?;
         let message: ClientMessage = bson::from_bson(it.into())?;
@@ -183,7 +181,6 @@ impl<R, W> ReadMessageWithContext<
     Shared<W>
 > for XXsonReader<
     R,
-    ClientMessage,
     Shared<ServerContext>
 > where
     R: Read,
@@ -206,7 +203,7 @@ impl<R, W> ReadMessageWithContext<
     }
 }
 
-impl<R: Read> XXsonReader<R, ServerMessage, Shared<ClientContext>> {
+impl<R: Read> XXsonReader<R, Shared<ClientContext>> {
     fn read_single_message(&mut self) -> Result<ServerMessage> {
         let it = self.backend.read_message()?;
         let message: ServerMessage = bson::from_bson(it.into())?;
@@ -317,7 +314,6 @@ impl<R, W> ReadMessageWithContext<
     Shared<W>,
 > for XXsonReader<
     R,
-    ServerMessage,
     Shared<ClientContext>
 > where
     R: Read,
@@ -340,23 +336,21 @@ impl<R, W> ReadMessageWithContext<
     }
 }
 
-pub struct XXsonWriter<W, M, C> {
+pub struct XXsonWriter<W, C> {
     backend: BsonWriter<W>,
-    phantom: PhantomData<M>,
-    phantom2: PhantomData<C>,
+    phantom: PhantomData<C>,
 }
 
-impl<W, M, C> XXsonWriter<W, M, C> {
-    pub fn new(stream: W) -> XXsonWriter<W, M, C> {
+impl<W, C> XXsonWriter<W, C> {
+    pub fn new(stream: W) -> XXsonWriter<W, C> {
         XXsonWriter {
             backend: BsonWriter::new(stream),
             phantom: PhantomData,
-            phantom2: PhantomData,
         }
     }
 }
 
-impl<W: Write> XXsonWriter<W, ClientMessage, Shared<ClientContext>> {
+impl<W: Write> XXsonWriter<W, Shared<ClientContext>> {
     fn write_single_message(&mut self, message: &ClientMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -419,7 +413,6 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ClientContext>
 > for XXsonWriter<
     W,
-    ClientMessage,
     Shared<ClientContext>
 > {
     fn write_message_with_context(
@@ -436,7 +429,6 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ClientContext>,
 > for XXsonWriter<
     W,
-    ClientMessage,
     Shared<ClientContext>,
 > {
     fn write_message_with_context(
@@ -452,7 +444,7 @@ impl<W: Write> WriteMessageWithContext<
     }
 }
 
-impl<W: Write> XXsonWriter<W, ServerMessage, Shared<ServerContext>> {
+impl<W: Write> XXsonWriter<W, Shared<ServerContext>> {
     fn write_single_message(&mut self, message: &ServerMessage) -> Result<()> {
         let serialized = bson::to_bson(message)?;
 
@@ -483,7 +475,6 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ServerContext>,
 > for XXsonWriter<
     W,
-    ServerMessage,
     Shared<ServerContext>,
 > {
     fn write_message_with_context(
@@ -500,7 +491,6 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ServerContext>,
 > for XXsonWriter<
     W,
-    ServerMessage,
     Shared<ServerContext>
 > {
     fn write_message_with_context(

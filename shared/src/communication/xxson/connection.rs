@@ -499,15 +499,15 @@ impl ServerConnection for Shared<ServerContext> {
 
 pub struct ClientSessionData {
     context: Shared<ClientContext>,
-    reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage, Shared<ClientContext>>>,
-    writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage, Shared<ClientContext>>>,
+    reader: Shared<XXsonReader<Shared<TcpStream>, Shared<ClientContext>>>,
+    writer: Shared<XXsonWriter<Shared<TcpStream>, Shared<ClientContext>>>,
 }
 
 impl ClientSessionData {
     pub fn new(
         context: Shared<ClientContext>,
-        reader: Shared<XXsonReader<Shared<TcpStream>, ServerMessage, Shared<ClientContext>>>,
-        writer: Shared<XXsonWriter<Shared<TcpStream>, ClientMessage, Shared<ClientContext>>>,
+        reader: Shared<XXsonReader<Shared<TcpStream>, Shared<ClientContext>>>,
+        writer: Shared<XXsonWriter<Shared<TcpStream>, Shared<ClientContext>>>,
     ) -> ClientSessionData {
         ClientSessionData {
             context: context,
@@ -591,15 +591,15 @@ impl ClientSession for ClientSessionData {}
 
 pub struct ServerSessionData {
     context: Shared<ServerContext>,
-    reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage, Shared<ServerContext>>>,
-    writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage, Shared<ServerContext>>>,
+    reader: Shared<XXsonReader<Shared<TcpStream>, Shared<ServerContext>>>,
+    writer: Shared<XXsonWriter<Shared<TcpStream>, Shared<ServerContext>>>,
 }
 
 impl ServerSessionData {
     pub fn new(
         context: Shared<ServerContext>,
-        reader: Shared<XXsonReader<Shared<TcpStream>, ClientMessage, Shared<ServerContext>>>,
-        writer: Shared<XXsonWriter<Shared<TcpStream>, ServerMessage, Shared<ServerContext>>>,
+        reader: Shared<XXsonReader<Shared<TcpStream>, Shared<ServerContext>>>,
+        writer: Shared<XXsonWriter<Shared<TcpStream>, Shared<ServerContext>>>,
     ) -> ServerSessionData {
         ServerSessionData {
             context: context,
@@ -704,11 +704,11 @@ pub fn build_client_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        XXsonReader::<_, ServerMessage, Shared<ClientContext>>::new(reading_stream.clone())
+        XXsonReader::<_, Shared<ClientContext>>::new(reading_stream.clone())
     );
 
     let writer = Shared::new(
-        XXsonWriter::<_, ClientMessage, Shared<ClientContext>>::new(writing_stream.clone())
+        XXsonWriter::<_, Shared<ClientContext>>::new(writing_stream.clone())
     );
 
     let sharers = Shared::new(HashMap::new());
@@ -741,11 +741,11 @@ pub fn build_server_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        XXsonReader::<_, ClientMessage, Shared<ServerContext>>::new(reading_stream.clone())
+        XXsonReader::<_, Shared<ServerContext>>::new(reading_stream.clone())
     );
 
     let writer = Shared::new(
-        XXsonWriter::<_, ServerMessage, Shared<ServerContext>>::new(writing_stream.clone())
+        XXsonWriter::<_, Shared<ServerContext>>::new(writing_stream.clone())
     );
 
     let sharers = Shared::new(HashMap::new());
