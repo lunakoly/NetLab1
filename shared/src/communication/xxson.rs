@@ -8,10 +8,10 @@ use std::fmt::{Display, Formatter};
 use std::path::{Path};
 use std::fs::{File};
 
-use crate::{ErrorKind, Result};
+use crate::{Result};
 use crate::shared::{Shared};
 use crate::errors::{with_error_report};
-use crate::communication::bson::{BsonReader, BsonWriter};
+use crate::communication::arson::{ArsonReader, ArsonWriter};
 use crate::capped_reader::{CAPPED_READER_CAPACITY};
 
 use crate::communication::{
@@ -29,8 +29,6 @@ use connection::{
 
 use messages::{CommonMessage, ClientMessage, ServerMessage};
 
-use bson::doc;
-
 use chrono::{DateTime, Local};
 
 // Found empirically
@@ -43,26 +41,20 @@ pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
 pub const CHUNK_SIZE: usize = 100;
 
 pub struct XXsonReader<R, C> {
-    backend: BsonReader<R>,
+    backend: ArsonReader<R>,
     phantom: PhantomData<C>,
 }
 
 impl<R: Read, C> XXsonReader<R, C> {
     pub fn new(reader: R) -> XXsonReader<R, C> {
         XXsonReader {
-            backend: BsonReader::new(reader),
+            backend: ArsonReader::new(reader),
             phantom: PhantomData,
         }
     }
 }
 
 impl<R: Read> XXsonReader<R, Shared<ServerContext>> {
-    fn read_single_message(&mut self) -> Result<ClientMessage> {
-        let it = self.backend.read_message()?;
-        let message: ClientMessage = bson::from_bson(it.into())?;
-        Ok(message)
-    }
-
     fn process_implicitly<W>(
         &mut self,
         mut context: Shared<ServerContext>,
@@ -73,7 +65,7 @@ impl<R: Read> XXsonReader<R, Shared<ServerContext>> {
          + WriteMessageWithContext<ServerMessage, Shared<ServerContext>>
          + Send + Sync + 'static,
     {
-        let message = self.read_single_message()?;
+        let message = self.backend.read_message()?;
 
         match &message {
             ClientMessage::Common { common } => match common {
@@ -204,12 +196,6 @@ impl<R, W> ReadMessageWithContext<
 }
 
 impl<R: Read> XXsonReader<R, Shared<ClientContext>> {
-    fn read_single_message(&mut self) -> Result<ServerMessage> {
-        let it = self.backend.read_message()?;
-        let message: ServerMessage = bson::from_bson(it.into())?;
-        Ok(message)
-    }
-
     fn process_implicitly<W>(
         &mut self,
         mut context: Shared<ClientContext>,
@@ -220,7 +206,7 @@ impl<R: Read> XXsonReader<R, Shared<ClientContext>> {
          + WriteMessageWithContext<ClientMessage, Shared<ClientContext>>
          + Send + Sync + 'static,
     {
-        let message = self.read_single_message()?;
+        let message = self.backend.read_message()?;
 
         match &message {
             ServerMessage::Common { common } => match common {
@@ -337,36 +323,20 @@ impl<R, W> ReadMessageWithContext<
 }
 
 pub struct XXsonWriter<W, C> {
-    backend: BsonWriter<W>,
+    backend: ArsonWriter<W>,
     phantom: PhantomData<C>,
 }
 
-impl<W, C> XXsonWriter<W, C> {
+impl<W: Write, C> XXsonWriter<W, C> {
     pub fn new(stream: W) -> XXsonWriter<W, C> {
         XXsonWriter {
-            backend: BsonWriter::new(stream),
+            backend: ArsonWriter::new(stream),
             phantom: PhantomData,
         }
     }
 }
 
 impl<W: Write> XXsonWriter<W, Shared<ClientContext>> {
-    fn write_single_message(&mut self, message: &ClientMessage) -> Result<()> {
-        let serialized = bson::to_bson(message)?;
-
-        if let Some(it) = serialized.as_document() {
-            self.backend.write_message(it)
-        } else if let Some(it) = serialized.as_str() {
-            let wrapper = doc! {
-                it: {}
-            };
-
-            self.backend.write_message(&wrapper)
-        } else {
-            Err(ErrorKind::NothingToRead.into())
-        }
-    }
-
     fn process_implicitly(
         &mut self,
         message: &ClientMessage,
@@ -397,10 +367,10 @@ impl<W: Write> XXsonWriter<W, Shared<ClientContext>> {
                     name: name.clone(),
                 };
 
-                self.write_single_message(&inner)?;
+                self.backend.write_message(&inner)?;
             }
             _ => {
-                self.write_single_message(message)?;
+                self.backend.write_message(message)?;
             }
         }
 
@@ -440,33 +410,17 @@ impl<W: Write> WriteMessageWithContext<
             common: message.clone(),
         };
 
-        self.write_single_message(&document)
+        self.backend.write_message(&document)
     }
 }
 
 impl<W: Write> XXsonWriter<W, Shared<ServerContext>> {
-    fn write_single_message(&mut self, message: &ServerMessage) -> Result<()> {
-        let serialized = bson::to_bson(message)?;
-
-        if let Some(it) = serialized.as_document() {
-            self.backend.write_message(it)
-        } else if let Some(it) = serialized.as_str() {
-            let wrapper = doc! {
-                it: {}
-            };
-
-            self.backend.write_message(&wrapper)
-        } else {
-            Err(ErrorKind::NothingToRead.into())
-        }
-    }
-
     fn process_implicitly(
         &mut self,
         message: &ServerMessage,
         _: Shared<ServerContext>,
     ) -> Result<()> {
-        self.write_single_message(message)
+        self.backend.write_message(message)
     }
 }
 
@@ -502,7 +456,7 @@ impl<W: Write> WriteMessageWithContext<
             common: message.clone(),
         };
 
-        self.write_single_message(&document)
+        self.backend.write_message(&document)
     }
 }
 
