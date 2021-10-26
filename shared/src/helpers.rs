@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+pub mod capped_reader;
+pub mod shared;
+
 use std::str::{from_utf8, from_utf8_unchecked};
 
 pub fn from_utf8_forced(buffer: &[u8]) -> &str {

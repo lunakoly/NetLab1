@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::capped_reader::{CAPPED_READER_CAPACITY};
+use crate::helpers::capped_reader::{CAPPED_READER_CAPACITY};
 
 use chrono::{Local};
 

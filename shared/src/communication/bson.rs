@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use crate::{ErrorKind, Result};
 use crate::communication::{ReadMessage, WriteMessage};
 
-use crate::capped_reader::{
+use crate::helpers::capped_reader::{
     IntoCappedReader,
     CappedReader,
     CappedRead,
