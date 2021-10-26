@@ -3,9 +3,10 @@ use std::path::{Path};
 
 use crate::chars_reader::{CharsReader};
 
+use super::{ClientSessionData};
+
 use shared::communication::{DEFAULT_PORT};
 use shared::communication::xxson::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
-use shared::communication::xxson::connection::{ClientSessionData};
 
 pub enum Command {
     Nothing,

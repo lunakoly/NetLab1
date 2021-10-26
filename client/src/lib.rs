@@ -1,4 +1,5 @@
 mod chars_reader;
+mod connection;
 mod commands;
 
 use std::fs::{File};
@@ -6,17 +7,18 @@ use std::io::{BufRead};
 use std::iter::Peekable;
 use std::net::{TcpStream};
 
+use connection::{
+    ClientSessionData,
+    ClientSession,
+    build_connection,
+};
+
 use shared::{Result, with_error_report};
 
 use shared::communication::xxson::messages::{
     CommonMessage,
     ClientMessage,
     ServerMessage,
-};
-use shared::communication::xxson::connection::{
-    ClientSessionData,
-    ClientSession,
-    build_client_connection,
 };
 
 use shared::communication::{
@@ -185,7 +187,7 @@ fn handle_user_command(
             let (
                 reading_connection,
                 writing_connection
-            ) = build_client_connection(
+            ) = build_connection(
                 TcpStream::connect(address)?
             )?;
 

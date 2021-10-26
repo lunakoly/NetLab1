@@ -1,3 +1,5 @@
+mod connection;
+
 use std::thread;
 
 use std::net::{TcpListener, TcpStream};
@@ -14,11 +16,11 @@ use shared::communication::{
     MessageProcessing,
 };
 
-use shared::communication::xxson::connection::{
+use connection::{
     ServerSession,
     NamesMap,
     Clients,
-    build_server_connection,
+    build_connection,
 };
 
 use shared::communication::xxson::messages::{
@@ -259,7 +261,7 @@ fn handle_client(
     let (
         reading_connection,
         mut writing_connection
-    ) = build_server_connection(
+    ) = build_connection(
         stream,
         names,
         clients.clone(),
