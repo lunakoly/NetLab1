@@ -54,7 +54,7 @@ impl<R: Read, C> XXsonReader<R, C> {
     }
 }
 
-impl<R: Read> XXsonReader<R, Shared<ServerContext>> {
+impl<R: Read> XXsonReader<R, ServerContext> {
     fn process_implicitly<W>(
         &mut self,
         mut context: Shared<ServerContext>,
@@ -173,7 +173,7 @@ impl<R, W> ReadMessageWithContext<
     Shared<W>
 > for XXsonReader<
     R,
-    Shared<ServerContext>
+    ServerContext
 > where
     R: Read,
     W: WriteMessageWithContext<CommonMessage, Shared<ServerContext>>
@@ -195,7 +195,7 @@ impl<R, W> ReadMessageWithContext<
     }
 }
 
-impl<R: Read> XXsonReader<R, Shared<ClientContext>> {
+impl<R: Read> XXsonReader<R, ClientContext> {
     fn process_implicitly<W>(
         &mut self,
         mut context: Shared<ClientContext>,
@@ -300,7 +300,7 @@ impl<R, W> ReadMessageWithContext<
     Shared<W>,
 > for XXsonReader<
     R,
-    Shared<ClientContext>
+    ClientContext
 > where
     R: Read,
     W: WriteMessageWithContext<CommonMessage, Shared<ClientContext>>
@@ -336,7 +336,7 @@ impl<W: Write, C> XXsonWriter<W, C> {
     }
 }
 
-impl<W: Write> XXsonWriter<W, Shared<ClientContext>> {
+impl<W: Write> XXsonWriter<W, ClientContext> {
     fn process_implicitly(
         &mut self,
         message: &ClientMessage,
@@ -383,7 +383,7 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ClientContext>
 > for XXsonWriter<
     W,
-    Shared<ClientContext>
+    ClientContext
 > {
     fn write_message_with_context(
         &mut self,
@@ -399,7 +399,7 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ClientContext>,
 > for XXsonWriter<
     W,
-    Shared<ClientContext>,
+    ClientContext,
 > {
     fn write_message_with_context(
         &mut self,
@@ -414,7 +414,7 @@ impl<W: Write> WriteMessageWithContext<
     }
 }
 
-impl<W: Write> XXsonWriter<W, Shared<ServerContext>> {
+impl<W: Write> XXsonWriter<W, ServerContext> {
     fn process_implicitly(
         &mut self,
         message: &ServerMessage,
@@ -429,7 +429,7 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ServerContext>,
 > for XXsonWriter<
     W,
-    Shared<ServerContext>,
+    ServerContext,
 > {
     fn write_message_with_context(
         &mut self,
@@ -445,7 +445,7 @@ impl<W: Write> WriteMessageWithContext<
     Shared<ServerContext>,
 > for XXsonWriter<
     W,
-    Shared<ServerContext>
+    ServerContext
 > {
     fn write_message_with_context(
         &mut self,
