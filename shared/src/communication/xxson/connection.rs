@@ -10,12 +10,10 @@ use crate::shared::map::{SharedMap};
 
 use crate::communication::{
     ReadMessage,
-    ReadMessageWithContext,
     WriteMessage,
-    WriteMessageWithContext,
 };
 
-use super::{XXsonReader, XXsonWriter};
+use crate::communication::arson::{ArsonReader, ArsonWriter};
 
 use super::messages::{
     CommonMessage,
@@ -497,17 +495,18 @@ impl ServerConnection for Shared<ServerContext> {
     }
 }
 
+#[derive(Clone)]
 pub struct ClientSessionData {
     context: Shared<ClientContext>,
-    reader: Shared<XXsonReader<Shared<TcpStream>, ClientContext>>,
-    writer: Shared<XXsonWriter<Shared<TcpStream>, ClientContext>>,
+    reader: Shared<ArsonReader<Shared<TcpStream>>>,
+    writer: Shared<ArsonWriter<Shared<TcpStream>>>,
 }
 
 impl ClientSessionData {
     pub fn new(
         context: Shared<ClientContext>,
-        reader: Shared<XXsonReader<Shared<TcpStream>, ClientContext>>,
-        writer: Shared<XXsonWriter<Shared<TcpStream>, ClientContext>>,
+        reader: Shared<ArsonReader<Shared<TcpStream>>>,
+        writer: Shared<ArsonWriter<Shared<TcpStream>>>,
     ) -> ClientSessionData {
         ClientSessionData {
             context: context,
@@ -519,19 +518,23 @@ impl ClientSessionData {
 
 impl ReadMessage<ServerMessage> for ClientSessionData {
     fn read_message(&mut self) -> Result<ServerMessage> {
-        self.reader.read_message_with_context(self.context.clone(), self.writer.clone())
+        self.reader.read_message()
     }
 }
 
 impl WriteMessage<ClientMessage> for ClientSessionData {
     fn write_message(&mut self, message: &ClientMessage) -> Result<()> {
-        self.writer.write_message_with_context(message, self.context.clone())
+        self.writer.write_message(message)
     }
 }
 
 impl WriteMessage<CommonMessage> for ClientSessionData {
     fn write_message(&mut self, message: &CommonMessage) -> Result<()> {
-        self.writer.write_message_with_context(message, self.context.clone())
+        let wrapped = ClientMessage::Common {
+            common: message.clone()
+        };
+
+        self.writer.write_message(&wrapped)
     }
 }
 
@@ -585,21 +588,26 @@ impl Connection for ClientSessionData {
 
 impl ClientConnection for ClientSessionData {}
 
-pub trait ClientSession: ClientConnection + ReadMessage<ServerMessage> + WriteMessage<ClientMessage> {}
+pub trait ClientSession: ClientConnection
+    + ReadMessage<ServerMessage>
+    + WriteMessage<ClientMessage>
+    + WriteMessage<CommonMessage>
+    + Clone + Send + Sync {}
 
 impl ClientSession for ClientSessionData {}
 
+#[derive(Clone)]
 pub struct ServerSessionData {
     context: Shared<ServerContext>,
-    reader: Shared<XXsonReader<Shared<TcpStream>, ServerContext>>,
-    writer: Shared<XXsonWriter<Shared<TcpStream>, ServerContext>>,
+    reader: Shared<ArsonReader<Shared<TcpStream>>>,
+    writer: Shared<ArsonWriter<Shared<TcpStream>>>,
 }
 
 impl ServerSessionData {
     pub fn new(
         context: Shared<ServerContext>,
-        reader: Shared<XXsonReader<Shared<TcpStream>, ServerContext>>,
-        writer: Shared<XXsonWriter<Shared<TcpStream>, ServerContext>>,
+        reader: Shared<ArsonReader<Shared<TcpStream>>>,
+        writer: Shared<ArsonWriter<Shared<TcpStream>>>,
     ) -> ServerSessionData {
         ServerSessionData {
             context: context,
@@ -611,19 +619,23 @@ impl ServerSessionData {
 
 impl ReadMessage<ClientMessage> for ServerSessionData {
     fn read_message(&mut self) -> Result<ClientMessage> {
-        self.reader.read_message_with_context(self.context.clone(), self.writer.clone())
+        self.reader.read_message()
     }
 }
 
 impl WriteMessage<ServerMessage> for ServerSessionData {
     fn write_message(&mut self, message: &ServerMessage) -> Result<()> {
-        self.writer.write_message_with_context(message, self.context.clone())
+        self.writer.write_message(message)
     }
 }
 
 impl WriteMessage<CommonMessage> for ServerSessionData {
     fn write_message(&mut self, message: &CommonMessage) -> Result<()> {
-        self.writer.write_message_with_context(message, self.context.clone())
+        let wrapped = ServerMessage::Common {
+            common: message.clone()
+        };
+
+        self.writer.write_message(&wrapped)
     }
 }
 
@@ -693,7 +705,11 @@ impl ServerConnection for ServerSessionData {
     }
 }
 
-pub trait ServerSession: ServerConnection + ReadMessage<ClientMessage> + WriteMessage<ServerMessage> {}
+pub trait ServerSession: ServerConnection
+    + ReadMessage<ClientMessage>
+    + WriteMessage<ServerMessage>
+    + WriteMessage<CommonMessage>
+    + Clone + Send + Sync {}
 
 impl ServerSession for ServerSessionData {}
 
@@ -704,11 +720,11 @@ pub fn build_client_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        XXsonReader::<_, ClientContext>::new(reading_stream.clone())
+        ArsonReader::new(reading_stream.clone())
     );
 
     let writer = Shared::new(
-        XXsonWriter::<_, ClientContext>::new(writing_stream.clone())
+        ArsonWriter::new(writing_stream.clone())
     );
 
     let sharers = Shared::new(HashMap::new());
@@ -741,11 +757,11 @@ pub fn build_server_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        XXsonReader::<_, ServerContext>::new(reading_stream.clone())
+        ArsonReader::new(reading_stream.clone())
     );
 
     let writer = Shared::new(
-        XXsonWriter::<_, ServerContext>::new(writing_stream.clone())
+        ArsonWriter::new(writing_stream.clone())
     );
 
     let sharers = Shared::new(HashMap::new());

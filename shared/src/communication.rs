@@ -3,6 +3,8 @@ pub mod bson;
 pub mod arson;
 pub mod xxson;
 
+use std::fs::{File};
+
 use crate::{Result, Error, ErrorKind};
 
 pub const DEFAULT_PORT: u32 = 6969;
@@ -15,16 +17,20 @@ pub trait WriteMessage<M> {
     fn write_message(&mut self, message: &M) -> Result<()>;
 }
 
-pub trait ReadMessageWithContext<M, C, W> {
-    fn read_message_with_context(
+pub trait SendFile {
+    fn send_file(
         &mut self,
-        context: C,
-        writer: W,
-    ) -> Result<M>;
-}
+        file: &mut File,
+        size: usize,
+        id: usize
+    ) -> Result<()>;
 
-pub trait WriteMessageWithContext<M, C> {
-    fn write_message_with_context(&mut self, message: &M, context: C) -> Result<()>;
+    fn send_file_non_blocking(
+        &mut self,
+        file: File,
+        size: usize,
+        id: usize
+    ) -> Result<()>;
 }
 
 pub fn explain_common_error(error: &Error) -> String {

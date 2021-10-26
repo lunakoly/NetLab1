@@ -2,9 +2,11 @@ use std::thread;
 
 use std::net::{TcpListener, TcpStream};
 use std::collections::{HashMap};
+use std::path::{Path};
+use std::fs::{File};
 
 use shared::shared::{Shared};
-use shared::communication::{DEFAULT_PORT};
+use shared::communication::{DEFAULT_PORT, SendFile};
 use shared::{Result, with_error_report, ErrorKind};
 
 use shared::communication::{
@@ -20,6 +22,7 @@ use shared::communication::xxson::connection::{
 };
 
 use shared::communication::xxson::messages::{
+    CommonMessage,
     ServerMessage,
     ClientMessage,
 };
@@ -45,7 +48,7 @@ fn broadcast_interupt(
 }
 
 fn handle_client_mesage(
-    connection: &mut impl ServerSession
+    connection: &mut (impl ServerSession + 'static)
 ) -> Result<MessageProcessing> {
     let time = chrono::Utc::now();
     let name = connection.name()?;
@@ -65,6 +68,27 @@ fn handle_client_mesage(
     };
 
     match message {
+        ClientMessage::Common { common } => match common {
+            CommonMessage::Chunk { data, id } => {
+                let done = connection.accept_chunk(&data, id.clone())?;
+
+                if !done {
+                    return Ok(MessageProcessing::Proceed);
+                }
+
+                let sharer = if let Some(that) = connection.remove_sharer(id.clone())? {
+                    that
+                } else {
+                    return Ok(MessageProcessing::Proceed)
+                };
+
+                let response = ServerMessage::NewFile {
+                    name: sharer.name,
+                };
+
+                connection.broadcast(&response)?;
+            }
+        }
         ClientMessage::Text { text } => {
             if text.len() > MAXIMUM_TEXT_SIZE {
                 connection.remove_from_clients()?;
@@ -106,18 +130,80 @@ fn handle_client_mesage(
                 connection.write_message(&it)?;
             };
         }
-        ClientMessage::ReceiveFile { name, .. } => {
-            let response = ServerMessage::NewFile { name };
-            connection.broadcast(&response)?;
+        ClientMessage::RequestFileUpload { name, size, id } => {
+            let response = if Path::new(&name).exists() {
+                ServerMessage::DeclineFileUpload {
+                    id: id.clone(),
+                    reason: "There's already a file with such a name".to_owned(),
+                }
+            } else {
+                connection.prepare_sharer(&name, File::create(&name)?, &name)?;
+                connection.promote_sharer(&name, size.clone(), id.clone())?;
+
+                ServerMessage::AgreeFileUpload {
+                    id: id.clone(),
+                }
+            };
+
+            connection.write_message(&response)?;
         }
-        _ => {}
+        ClientMessage::RequestFileDownload { name } => {
+            let response = if !Path::new(&name).exists() {
+                ServerMessage::DeclineFileDownload {
+                    name: name.clone(),
+                    reason: "There's no such a file".to_owned(),
+                }
+            } else {
+                let id = connection.free_id()?;
+
+                let file = File::open(&name)?;
+                let size = file.metadata()?.len() as usize;
+
+                connection.prepare_sharer(&name, file, &name)?;
+                connection.promote_sharer(&name, size.clone(), id.clone())?;
+
+                ServerMessage::AgreeFileDownload {
+                    name: name.clone(),
+                    id: id.clone(),
+                    size: size,
+                }
+            };
+
+            connection.write_message(&response)?;
+        }
+        ClientMessage::AgreeFileDownload { id } => {
+            let file: File;
+            let size: usize;
+
+            {
+                let sharers = connection.sharers_map()?;
+                let mut locked = sharers.write()?;
+                let key = format!("{}", id);
+
+                let sharer = if let Some(it) = locked.get_mut(&key) {
+                    it
+                } else {
+                    return Ok(MessageProcessing::Proceed)
+                };
+
+                file = sharer.file.try_clone()?;
+                size = sharer.size.clone();
+            }
+
+            connection.send_file_non_blocking(file, size, id.clone())?;
+        }
+        ClientMessage::DeclineFileDownload { id } => {
+            // Well, they asked for the file, but
+            // now they say they can't accept the size.
+            connection.remove_sharer(id.clone())?;
+        }
     }
 
     Ok(MessageProcessing::Proceed)
 }
 
 fn handle_client_messages(
-    mut connection: impl ServerSession
+    mut connection: impl ServerSession + 'static
 ) -> Result<()> {
     loop {
         let result = handle_client_mesage(&mut connection)?;

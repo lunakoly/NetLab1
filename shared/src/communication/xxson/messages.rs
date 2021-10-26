@@ -20,8 +20,8 @@ pub enum ClientMessage {
 
     // The client creates these manually,
     // but the server never reads these
-    UploadFile { name: String, path: String },
-    DownloadFile { name: String, path: String },
+    // UploadFile { name: String, path: String },
+    // DownloadFile { name: String, path: String },
 
     // The client never creates these manually,
     // and the server never reads these
@@ -33,7 +33,6 @@ pub enum ClientMessage {
 
     // The client never creates these manually,
     // but the server reads these
-    ReceiveFile { name: String, path: String },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -58,7 +57,4 @@ pub enum ServerMessage {
 
     // The server never creates these manually,
     // but the client reads these
-    ReceiveFile { name: String, path: String },
-    DeclineFileUpload2 { name: String, reason: String },
-    DeclineFileDownload2 { name: String, reason: String },
 }
