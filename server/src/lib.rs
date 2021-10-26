@@ -29,7 +29,7 @@ use shared::connection::messages::{
     ClientMessage,
 };
 
-use shared::connection::helpers::{
+use shared::connection::messages::{
     MAXIMUM_TEXT_SIZE,
     MAXIMUM_NAME_SIZE,
 };

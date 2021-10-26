@@ -3,25 +3,15 @@ use std::fs::{File};
 
 use crate::{Result};
 use crate::errors::{with_error_report};
-use crate::capped_reader::{CAPPED_READER_CAPACITY};
 
 use crate::communication::{
     WriteMessage,
     SendFile,
 };
 
-use super::messages::{CommonMessage};
+use super::messages::{CommonMessage, CHUNK_SIZE};
 
 use chrono::{Local};
-
-// Found empirically
-pub const MINIMUM_TEXT_MESSAGE_SIZE: usize = 52;
-pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM_TEXT_MESSAGE_SIZE;
-
-pub const MAXIMUM_TEXT_SIZE: usize = MAXIMUM_TEXT_MESSAGE_CONTENT / 2;
-pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
-
-pub const CHUNK_SIZE: usize = 100;
 
 impl<W> SendFile for W
 where
