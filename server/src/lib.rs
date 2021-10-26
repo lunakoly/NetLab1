@@ -23,13 +23,13 @@ use connection::{
     build_connection,
 };
 
-use shared::communication::xxson::messages::{
+use shared::connection::messages::{
     CommonMessage,
     ServerMessage,
     ClientMessage,
 };
 
-use shared::communication::xxson::{
+use shared::connection::helpers::{
     MAXIMUM_TEXT_SIZE,
     MAXIMUM_NAME_SIZE,
 };

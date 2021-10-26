@@ -1,3 +1,7 @@
+pub mod messages;
+pub mod sharers;
+pub mod helpers;
+
 use std::net::{TcpStream, SocketAddr};
 use std::io::{Write};
 use std::fs::{File};
@@ -6,7 +10,7 @@ use std::cmp::{min};
 use crate::{Result};
 use crate::shared::{Shared};
 
-use super::sharers::{FileSharer, FileSharers};
+use sharers::{FileSharer, FileSharers};
 
 pub struct Context {
     stream: Shared<TcpStream>,

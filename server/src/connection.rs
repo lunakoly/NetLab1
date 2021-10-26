@@ -13,14 +13,14 @@ use shared::communication::{
 
 use shared::communication::arson::{ArsonReader, ArsonWriter};
 
-use shared::communication::xxson::messages::{
+use shared::connection::messages::{
     CommonMessage,
     ClientMessage,
     ServerMessage,
 };
 
-use shared::communication::xxson::connection::{Context, Connection, WithConnection};
-use shared::communication::xxson::sharers::{FileSharer, FileSharers};
+use shared::connection::{Context, Connection, WithConnection};
+use shared::connection::sharers::{FileSharer, FileSharers};
 
 pub type NamesMap = SharedMap<String, String>;
 pub type Clients = SharedMap<String, Shared<ServerSessionData>>;

@@ -1,97 +1,55 @@
-pub mod connection;
-pub mod messages;
-pub mod sharers;
-
-use std::io::{Read};
-use std::fs::{File};
 use std::fmt::{Display, Formatter};
 
-use crate::{Result};
-use crate::errors::{with_error_report};
-use crate::capped_reader::{CAPPED_READER_CAPACITY};
+use chrono::{Local};
 
-use crate::communication::{
-    WriteMessage,
-    SendFile,
-};
+use serde::{Serialize, Deserialize};
 
-use messages::{CommonMessage, ServerMessage};
+use bson::{DateTime};
 
-use chrono::{DateTime, Local};
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum CommonMessage {
+    Chunk { data: Vec<u8>, id: usize },
+}
 
-// Found empirically
-pub const MINIMUM_TEXT_MESSAGE_SIZE: usize = 52;
-pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM_TEXT_MESSAGE_SIZE;
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ClientMessage {
+    // Main
+    Text { text: String },
+    Leave,
+    Rename { new_name: String },
 
-pub const MAXIMUM_TEXT_SIZE: usize = MAXIMUM_TEXT_MESSAGE_CONTENT / 2;
-pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
+    // Sending files
+    Common { common: CommonMessage },
+    RequestFileUpload { name: String, size: usize, id: usize },
+    RequestFileDownload { name: String },
+    AgreeFileDownload { id: usize },
+    DeclineFileDownload { id: usize },
+}
 
-pub const CHUNK_SIZE: usize = 100;
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ServerMessage {
+    // Main
+    Text { text: String, name: String, time: DateTime },
+    NewUser { name: String, time: DateTime },
+    Interrupt { name: String, time: DateTime },
+    UserLeaves { name: String, time: DateTime },
+    Support { text: String },
+    UserRenamed { old_name: String, new_name: String },
+    NewFile { name: String },
 
-impl<W> SendFile for W
-where
-    W: WriteMessage<CommonMessage>
-     + Clone
-     + Send + Sync + 'static,
-{
-    fn send_file(
-        &mut self,
-        file: &mut File,
-        size: usize,
-        id: usize
-    ) -> Result<()> {
-        let mut written = 0usize;
-        let mut old_time_point = Local::now();
-
-        while written < size {
-            let mut buffer = [0u8; CHUNK_SIZE];
-            let read = file.read(&mut buffer)?;
-            written += read;
-
-            let chunk = CommonMessage::Chunk {
-                data: buffer.to_vec(),
-                id: id.clone(),
-            };
-
-            self.write_message(&chunk)?;
-
-            let time_point = Local::now();
-
-            if (time_point - old_time_point).num_seconds() >= 1 {
-                old_time_point = time_point;
-                println!("(Console) File #{} > {}%", id.clone(), written * 100 / size);
-            }
-        }
-
-        Ok(())
-    }
-
-    fn send_file_non_blocking(
-        &mut self,
-        file: File,
-        size: usize,
-        id: usize
-    ) -> Result<()> {
-        let the_writer = self.clone();
-
-        std::thread::spawn(move || {
-            let mut owned_file = file;
-            let mut owned_writer = the_writer;
-
-            with_error_report(|| -> Result<()> {
-                owned_writer.send_file(&mut owned_file, size, id)
-            });
-        });
-
-        Ok(())
-    }
+    // Sending files
+    Common { common: CommonMessage },
+    AgreeFileUpload { id: usize },
+    DeclineFileUpload { id: usize, reason: String },
+    AgreeFileDownload { name: String, size: usize, id: usize },
+    DeclineFileDownload { name: String, reason: String },
 }
 
 impl Display for ServerMessage {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         match self {
             ServerMessage::Text { text, name, time } => {
-                let the_time: DateTime<Local> = time.to_chrono().into();
+                let the_time: chrono::DateTime<Local> = time.to_chrono().into();
                 let formatted = the_time.format("%e %b %Y %T");
                 write!(formatter, "<{}> [{}] {}", formatted, name, text)
             }

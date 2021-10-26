@@ -15,7 +15,7 @@ use connection::{
 
 use shared::{Result, with_error_report};
 
-use shared::communication::xxson::messages::{
+use shared::connection::messages::{
     CommonMessage,
     ClientMessage,
     ServerMessage,

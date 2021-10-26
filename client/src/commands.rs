@@ -6,7 +6,7 @@ use crate::chars_reader::{CharsReader};
 use super::{ClientSessionData};
 
 use shared::communication::{DEFAULT_PORT};
-use shared::communication::xxson::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
+use shared::connection::helpers::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
 
 pub enum Command {
     Nothing,
