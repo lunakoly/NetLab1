@@ -8,7 +8,7 @@ use std::iter::Peekable;
 use std::net::{TcpStream};
 
 use connection::{
-    ClientSessionData,
+    ArsonClientSession,
     ClientSession,
     build_connection,
 };
@@ -310,7 +310,7 @@ fn handle_user_commands() -> Result<()> {
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
 
-    let mut connection: Option<ClientSessionData> = None;
+    let mut connection: Option<ArsonClientSession> = None;
 
     loop {
         let result = handle_user_command(&mut connection, &mut reader)?;

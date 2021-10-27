@@ -3,7 +3,7 @@ use std::path::{Path};
 
 use crate::chars_reader::{CharsReader};
 
-use super::{ClientSessionData};
+use super::{ArsonClientSession};
 
 use shared::communication::{DEFAULT_PORT};
 use shared::connection::messages::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
@@ -21,7 +21,7 @@ pub enum Command {
 pub enum CommandProcessing {
     Proceed,
     Stop,
-    Connect(ClientSessionData)
+    Connect(ArsonClientSession)
 }
 
 fn is_blank(symbol: char) -> bool {

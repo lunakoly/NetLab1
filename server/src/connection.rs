@@ -24,7 +24,7 @@ use shared::connection::{Context, Connection, WithConnection};
 use shared::connection::sharers::{FileSharer, FileSharers};
 
 pub type NamesMap = SharedMap<String, String>;
-pub type Clients = SharedMap<String, Shared<ServerSessionData>>;
+pub type Clients = SharedMap<String, Shared<ArsonServerSession>>;
 
 pub struct ServerContext {
     common: Context,
@@ -180,19 +180,19 @@ impl<T: ServerConnection> ServerConnection for Shared<T> {
 }
 
 #[derive(Clone)]
-pub struct ServerSessionData {
+pub struct ArsonServerSession {
     context: Shared<ServerContext>,
     reader: Shared<ArsonReader<Shared<TcpStream>>>,
     writer: Shared<ArsonWriter<Shared<TcpStream>>>,
 }
 
-impl ServerSessionData {
+impl ArsonServerSession {
     pub fn new(
         context: Shared<ServerContext>,
         reader: Shared<ArsonReader<Shared<TcpStream>>>,
         writer: Shared<ArsonWriter<Shared<TcpStream>>>,
-    ) -> ServerSessionData {
-        ServerSessionData {
+    ) -> ArsonServerSession {
+        ArsonServerSession {
             context: context,
             reader: reader,
             writer: writer,
@@ -200,19 +200,19 @@ impl ServerSessionData {
     }
 }
 
-impl ReadMessage<ClientMessage> for ServerSessionData {
+impl ReadMessage<ClientMessage> for ArsonServerSession {
     fn read_message(&mut self) -> Result<ClientMessage> {
         self.reader.read_message()
     }
 }
 
-impl WriteMessage<ServerMessage> for ServerSessionData {
+impl WriteMessage<ServerMessage> for ArsonServerSession {
     fn write_message(&mut self, message: &ServerMessage) -> Result<()> {
         self.writer.write_message(message)
     }
 }
 
-impl WriteMessage<CommonMessage> for ServerSessionData {
+impl WriteMessage<CommonMessage> for ArsonServerSession {
     fn write_message(&mut self, message: &CommonMessage) -> Result<()> {
         let wrapped = ServerMessage::Common {
             common: message.clone()
@@ -222,7 +222,7 @@ impl WriteMessage<CommonMessage> for ServerSessionData {
     }
 }
 
-impl Connection for ServerSessionData {
+impl Connection for ArsonServerSession {
     fn remote_address(&self) -> Result<SocketAddr> {
         self.context.remote_address()
     }
@@ -270,7 +270,7 @@ impl Connection for ServerSessionData {
     }
 }
 
-impl ServerConnection for ServerSessionData {
+impl ServerConnection for ArsonServerSession {
     fn name(&self) -> Result<String> {
         self.context.name()
     }
@@ -294,13 +294,13 @@ pub trait ServerSession: ServerConnection
     + WriteMessage<CommonMessage>
     + Clone + Send + Sync {}
 
-impl ServerSession for ServerSessionData {}
+impl ServerSession for ArsonServerSession {}
 
 pub fn build_connection(
     stream: TcpStream,
     names: NamesMap,
     clients: Clients,
-) -> Result<(ServerSessionData, ServerSessionData)> {
+) -> Result<(ArsonServerSession, ArsonServerSession)> {
     let reading_stream = Shared::new(stream.try_clone()?);
     let writing_stream = Shared::new(stream);
 
@@ -314,7 +314,7 @@ pub fn build_connection(
 
     let sharers = Shared::new(HashMap::new());
 
-    let reader_context = ServerSessionData::new(
+    let reader_context = ArsonServerSession::new(
         Shared::new(
             ServerContext::new(reading_stream, sharers.clone(), names.clone(), clients.clone())
         ),
@@ -322,7 +322,7 @@ pub fn build_connection(
         writer.clone(),
     );
 
-    let writer_context = ServerSessionData::new(
+    let writer_context = ArsonServerSession::new(
         Shared::new(
             ServerContext::new(writing_stream, sharers.clone(), names, clients)
         ),
