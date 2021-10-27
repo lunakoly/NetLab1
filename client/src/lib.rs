@@ -31,7 +31,133 @@ use shared::communication::{
 use chars_reader::{IntoCharsReader, CharsReader};
 use commands::{Command, CommandProcessing};
 
+fn handle_server_chunk(
+    connection: &mut (impl ClientSession + 'static),
+    data: &[u8],
+    id: usize,
+) -> Result<MessageProcessing> {
+    let done = connection.accept_chunk(data, id)?;
+
+    if !done {
+        return Ok(MessageProcessing::Proceed);
+    }
+
+    let sharer = if let Some(that) = connection.remove_sharer(id)? {
+        that
+    } else {
+        return Ok(MessageProcessing::Proceed)
+    };
+
+    println!("(Console) Downloaded {} and saved to {}", &sharer.name, &sharer.path);
+    Ok(MessageProcessing::Proceed)
+}
+
+fn handle_server_common_message(
+    connection: &mut (impl ClientSession + 'static),
+    message: &CommonMessage,
+) -> Result<MessageProcessing> {
+    match message {
+        CommonMessage::Chunk { data, id } => {
+            handle_server_chunk(connection, &data, id.clone())
+        }
+    }
+}
+
+fn handle_server_agree_file_upload(
+    connection: &mut (impl ClientSession + 'static),
+    id: usize,
+) -> Result<MessageProcessing> {
+    let file: File;
+    let size: usize;
+
+    {
+        let sharers = connection.sharers_map()?;
+        let mut locked = sharers.write()?;
+        let key = format!("{}", id);
+
+        let sharer = if let Some(it) = locked.get_mut(&key) {
+            it
+        } else {
+            return Ok(MessageProcessing::Proceed)
+        };
+
+        file = sharer.file.try_clone()?;
+        size = sharer.size.clone();
+    }
+
+    connection.send_file_non_blocking(file, size, id)?;
+    Ok(MessageProcessing::Proceed)
+}
+
+fn handle_server_decline_file_upload(
+    connection: &mut (impl ClientSession + 'static),
+    id: usize,
+    reason: &str,
+) -> Result<MessageProcessing> {
+    let sharer = if let Some(it) = connection.remove_sharer(id)? {
+        it
+    } else {
+        return Ok(MessageProcessing::Proceed)
+    };
+
+    println!("(Server) Nah, wait with your #{}. {}", &sharer.name, &reason.clone());
+    Ok(MessageProcessing::Proceed)
+}
+
+fn handle_server_agree_file_download(
+    connection: &mut (impl ClientSession + 'static),
+    name: &str,
+    size: usize,
+    id: usize,
+) -> Result<MessageProcessing> {
+    connection.promote_sharer(&name, size, id)?;
+
+    let response = ClientMessage::AgreeFileDownload {
+        id: id,
+    };
+
+    connection.write_message(&response)?;
+    Ok(MessageProcessing::Proceed)
+}
+
+fn handle_server_decline_file_download(
+    connection: &mut (impl ClientSession + 'static),
+    name: &str,
+    reason: &str,
+) -> Result<MessageProcessing> {
+    connection.remove_unpromoted_sharer(&name)?;
+    println!("(Server) Nah, I won't give you {}. {}", &name, &reason);
+    Ok(MessageProcessing::Proceed)
+}
+
 fn handle_server_message(
+    connection: &mut (impl ClientSession + 'static),
+    message: &ServerMessage,
+) -> Result<MessageProcessing> {
+    match message {
+        ServerMessage::Common { common } => {
+            handle_server_common_message(connection, &common)
+        }
+        ServerMessage::AgreeFileUpload { id } => {
+            handle_server_agree_file_upload(connection, id.clone())
+        }
+        ServerMessage::DeclineFileUpload { id, reason } => {
+            handle_server_decline_file_upload(connection, id.clone(), &reason)
+        }
+        ServerMessage::AgreeFileDownload { name, size, id } => {
+            handle_server_agree_file_download(connection, &name, size.clone(), id.clone())
+        }
+        ServerMessage::DeclineFileDownload { name, reason } => {
+            handle_server_decline_file_download(connection, &name, &reason)
+        }
+        _ => {
+            println!("{}", message);
+            Ok(MessageProcessing::Proceed)
+        }
+    }
+}
+
+fn read_and_handle_server_message(
     connection: &mut (impl ClientSession + 'static)
 ) -> Result<MessageProcessing> {
     let message = match connection.read_message() {
@@ -43,78 +169,12 @@ fn handle_server_message(
         }
     };
 
-    match message {
-        ServerMessage::Common { common } => match common {
-            CommonMessage::Chunk { data, id } => {
-                let done = connection.accept_chunk(&data, id.clone())?;
-
-                if !done {
-                    return Ok(MessageProcessing::Proceed);
-                }
-
-                let sharer = if let Some(that) = connection.remove_sharer(id.clone())? {
-                    that
-                } else {
-                    return Ok(MessageProcessing::Proceed)
-                };
-
-                println!("(Console) Downloaded {} and saved to {}", &sharer.name, &sharer.path)
-            }
-        }
-        ServerMessage::AgreeFileUpload { id } => {
-            let file: File;
-            let size: usize;
-
-            {
-                let sharers = connection.sharers_map()?;
-                let mut locked = sharers.write()?;
-                let key = format!("{}", id);
-
-                let sharer = if let Some(it) = locked.get_mut(&key) {
-                    it
-                } else {
-                    return Ok(MessageProcessing::Proceed)
-                };
-
-                file = sharer.file.try_clone()?;
-                size = sharer.size.clone();
-            }
-
-            connection.send_file_non_blocking(file, size, id.clone())?;
-        }
-        ServerMessage::DeclineFileUpload { id, reason } => {
-            let sharer = if let Some(it) = connection.remove_sharer(id.clone())? {
-                it
-            } else {
-                return Ok(MessageProcessing::Proceed)
-            };
-
-            println!("(Server) Nah, wait with your #{}. {}", &sharer.name, &reason.clone())
-        }
-        ServerMessage::AgreeFileDownload { name, size, id } => {
-            connection.promote_sharer(&name, size.clone(), id.clone())?;
-
-            let response = ClientMessage::AgreeFileDownload {
-                id: id.clone(),
-            };
-
-            connection.write_message(&response)?;
-        }
-        ServerMessage::DeclineFileDownload { name, reason } => {
-            connection.remove_unpromoted_sharer(&name)?;
-            println!("(Server) Nah, I won't give you {}. {}", &name.clone(), &reason.clone())
-        }
-        _ => {
-            println!("{}", message);
-        }
-    }
-
-    Ok(MessageProcessing::Proceed)
+    handle_server_message(connection, &message)
 }
 
 fn handle_server_messages(mut connection: impl ClientSession + 'static) -> Result<()> {
     loop {
-        let result = handle_server_message(&mut connection)?;
+        let result = read_and_handle_server_message(&mut connection)?;
 
         if let MessageProcessing::Stop = &result {
             break
@@ -124,55 +184,89 @@ fn handle_server_messages(mut connection: impl ClientSession + 'static) -> Resul
     Ok(())
 }
 
+fn perform_text(
+    connection: &mut impl ClientSession,
+    text: &str,
+) -> Result<CommandProcessing> {
+    let message = ClientMessage::Text {
+        text: text.to_owned(),
+    };
+
+    connection.write_message(&message)?;
+    Ok(CommandProcessing::Proceed)
+}
+
+fn perform_rename(
+    connection: &mut impl ClientSession,
+    new_name: &str,
+) -> Result<CommandProcessing> {
+    let message = ClientMessage::Rename {
+        new_name: new_name.to_owned(),
+    };
+
+    connection.write_message(&message)?;
+    Ok(CommandProcessing::Proceed)
+}
+
+fn perform_upload_file(
+    connection: &mut impl ClientSession,
+    name: &str,
+    path: &str,
+) -> Result<CommandProcessing> {
+    let id = connection.free_id()?;
+
+    let file = File::open(path)?;
+    let size = file.metadata()?.len() as usize;
+
+    let request = ClientMessage::RequestFileUpload {
+        name: name.to_owned(),
+        size: size,
+        id: id,
+    };
+
+    connection.prepare_sharer(path, file, name)?;
+    connection.promote_sharer(name, size, id)?;
+
+    connection.write_message(&request)?;
+    Ok(CommandProcessing::Proceed)
+}
+
+fn perform_download_file(
+    connection: &mut impl ClientSession,
+    name: &str,
+    path: &str,
+) -> Result<CommandProcessing> {
+    connection.prepare_sharer(path, File::create(path)?, name)?;
+
+    let inner = ClientMessage::RequestFileDownload {
+        name: name.to_owned(),
+    };
+
+    connection.write_message(&inner)?;
+    Ok(CommandProcessing::Proceed)
+}
+
 fn match_user_command_with_connection(
     command: Command,
     connection: &mut impl ClientSession,
 ) -> Result<CommandProcessing> {
     match command {
         Command::Text { text } => {
-            let message = ClientMessage::Text {
-                text: text,
-            };
-
-            connection.write_message(&message)?;
+            perform_text(connection, &text)
         }
         Command::Rename { new_name } => {
-            let message = ClientMessage::Rename {
-                new_name: new_name,
-            };
-
-            connection.write_message(&message)?;
+            perform_rename(connection, &new_name)
         }
         Command::UploadFile { name, path } => {
-            let id = connection.free_id()?;
-
-            let file = File::open(&path)?;
-            let size = file.metadata()?.len() as usize;
-
-            let request = ClientMessage::RequestFileUpload {
-                name: name.clone(),
-                size: size,
-                id: id,
-            };
-
-            connection.prepare_sharer(&path, file, &name)?;
-            connection.promote_sharer(&name, size, id)?;
-
-            connection.write_message(&request)?;
+            perform_upload_file(connection, &name, &path)
         }
         Command::DownloadFile { name, path } => {
-            connection.prepare_sharer(&path, File::create(&path)?, &name)?;
-
-            let inner = ClientMessage::RequestFileDownload {
-                name: name.clone(),
-            };
-
-            connection.write_message(&inner)?;
+            perform_download_file(connection, &name, &path)
         }
-        _ => {}
+        _ => {
+            Ok(CommandProcessing::Proceed)
+        }
     }
-
-    Ok(CommandProcessing::Proceed)
 }
 
 fn handle_user_command(
