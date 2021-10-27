@@ -301,21 +301,21 @@ pub fn build_connection(
     names: NamesMap,
     clients: Clients,
 ) -> Result<(ArsonServerSession, ArsonServerSession)> {
-    let reading_stream = stream.try_clone()?.shared();
-    let writing_stream = stream.shared();
+    let reading_stream = stream.try_clone()?.to_shared();
+    let writing_stream = stream.to_shared();
 
-    let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).shared();
-    let writer = ArsonWriter::new(writing_stream.clone()).shared();
-    let sharers = HashMap::new().shared();
+    let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).to_shared();
+    let writer = ArsonWriter::new(writing_stream.clone()).to_shared();
+    let sharers = HashMap::new().to_shared();
 
     let reader_context = ArsonServerSession::new(
-        ServerContext::new(reading_stream, sharers.clone(), names.clone(), clients.clone()).shared(),
+        ServerContext::new(reading_stream, sharers.clone(), names.clone(), clients.clone()).to_shared(),
         reader.clone(),
         writer.clone(),
     );
 
     let writer_context = ArsonServerSession::new(
-        ServerContext::new(writing_stream, sharers.clone(), names, clients).shared(),
+        ServerContext::new(writing_stream, sharers.clone(), names, clients).to_shared(),
         reader.clone(),
         writer.clone(),
     );

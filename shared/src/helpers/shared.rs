@@ -37,11 +37,11 @@ impl<R> Shared<R> {
 }
 
 pub trait IntoShared<T> {
-    fn shared(self) -> Shared<T>;
+    fn to_shared(self) -> Shared<T>;
 }
 
 impl<T> IntoShared<T> for T {
-    fn shared(self) -> Shared<T> {
+    fn to_shared(self) -> Shared<T> {
         Shared::new(self)
     }
 }

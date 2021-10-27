@@ -315,7 +315,7 @@ fn setup_names_mapping() -> NamesMap {
         "Server".to_owned(),
     );
 
-    names.shared()
+    names.to_shared()
 }
 
 fn greet_user(
@@ -356,7 +356,7 @@ fn handle_client(
     )?;
 
     let address = greet_user(&mut writing_connection)?;
-    clients.insert(address, writing_connection.shared())?;
+    clients.insert(address, writing_connection.to_shared())?;
 
     with_error_report(|| handle_client_messages(reading_connection));
     Ok(())
@@ -364,7 +364,7 @@ fn handle_client(
 
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
-    let clients = HashMap::new().shared();
+    let clients = HashMap::new().to_shared();
     let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {

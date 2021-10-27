@@ -161,21 +161,21 @@ impl ClientSession for ArsonClientSession {}
 pub fn build_connection(
     stream: TcpStream
 ) -> Result<(ArsonClientSession, ArsonClientSession)> {
-    let reading_stream = stream.try_clone()?.shared();
-    let writing_stream = stream.shared();
+    let reading_stream = stream.try_clone()?.to_shared();
+    let writing_stream = stream.to_shared();
 
-    let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).shared();
-    let writer = ArsonWriter::new(writing_stream.clone()).shared();
-    let sharers = HashMap::new().shared();
+    let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).to_shared();
+    let writer = ArsonWriter::new(writing_stream.clone()).to_shared();
+    let sharers = HashMap::new().to_shared();
 
     let reader_context = ArsonClientSession::new(
-        ClientContext::new(reading_stream, sharers.clone()).shared(),
+        ClientContext::new(reading_stream, sharers.clone()).to_shared(),
         reader.clone(),
         writer.clone(),
     );
 
     let writer_context = ArsonClientSession::new(
-        ClientContext::new(writing_stream, sharers.clone()).shared(),
+        ClientContext::new(writing_stream, sharers.clone()).to_shared(),
         reader.clone(),
         writer.clone(),
     );

@@ -11,11 +11,11 @@ pub struct CappedReader<R> {
 }
 
 pub trait IntoCappedReader<R: Read> {
-    fn capped(self, capacity: usize) -> CappedReader<R>;
+    fn to_capped(self, capacity: usize) -> CappedReader<R>;
 }
 
 impl<R: Read> IntoCappedReader<R> for R {
-    fn capped(self, capacity: usize) -> CappedReader<R> {
+    fn to_capped(self, capacity: usize) -> CappedReader<R> {
         CappedReader {
             capacity: capacity,
             stream: self,
