@@ -16,9 +16,9 @@ pub struct BsonReader<R> {
 }
 
 impl<R: Read> BsonReader<R> {
-    pub fn new(reader: R) -> BsonReader<R> {
+    pub fn new(reader: R, cap: usize) -> BsonReader<R> {
         BsonReader {
-            stream: reader.capped(),
+            stream: reader.capped(cap),
         }
     }
 }

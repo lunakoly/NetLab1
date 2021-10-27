@@ -4,20 +4,20 @@ pub trait CappedRead: Read {
     fn clear(&mut self);
 }
 
-pub const CAPPED_READER_CAPACITY: usize = 1024;
-
 pub struct CappedReader<R> {
+    capacity: usize,
     stream: R,
     offset: usize,
 }
 
 pub trait IntoCappedReader<R: Read> {
-    fn capped(self) -> CappedReader<R>;
+    fn capped(self, capacity: usize) -> CappedReader<R>;
 }
 
 impl<R: Read> IntoCappedReader<R> for R {
-    fn capped(self) -> CappedReader<R> {
+    fn capped(self, capacity: usize) -> CappedReader<R> {
         CappedReader {
+            capacity: capacity,
             stream: self,
             offset: 0,
         }
@@ -27,7 +27,7 @@ impl<R: Read> IntoCappedReader<R> for R {
 impl<R: Read> Read for CappedReader<R> {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, std::io::Error> {
         let max_allowed_count = std::cmp::min(
-            CAPPED_READER_CAPACITY - self.offset,
+            self.capacity - self.offset,
             buffer.len()
         );
 

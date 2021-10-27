@@ -16,6 +16,7 @@ use shared::connection::messages::{
     CommonMessage,
     ClientMessage,
     ServerMessage,
+    MAXIMUM_MESSAGE_SIZE,
 };
 
 use shared::connection::{Context, Connection, WithConnection};
@@ -164,7 +165,7 @@ pub fn build_connection(
     let writing_stream = Shared::new(stream);
 
     let reader = Shared::new(
-        ArsonReader::new(reading_stream.clone())
+        ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE)
     );
 
     let writer = Shared::new(

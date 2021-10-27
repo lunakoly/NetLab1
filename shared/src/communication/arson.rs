@@ -15,9 +15,9 @@ pub struct ArsonReader<R> {
 }
 
 impl<R: Read> ArsonReader<R> {
-    pub fn new(reader: R) -> ArsonReader<R> {
+    pub fn new(reader: R, cap: usize) -> ArsonReader<R> {
         ArsonReader {
-            backend: BsonReader::new(reader),
+            backend: BsonReader::new(reader, cap),
         }
     }
 }

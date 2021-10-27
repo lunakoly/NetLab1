@@ -1,16 +1,16 @@
 use std::fmt::{Display, Formatter};
 
-use crate::helpers::capped_reader::{CAPPED_READER_CAPACITY};
-
 use chrono::{Local};
 
 use serde::{Serialize, Deserialize};
 
 use bson::{DateTime};
 
+pub const MAXIMUM_MESSAGE_SIZE: usize = 1024;
+
 // Found empirically
 pub const MINIMUM_TEXT_MESSAGE_SIZE: usize = 52;
-pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = CAPPED_READER_CAPACITY - MINIMUM_TEXT_MESSAGE_SIZE;
+pub const MAXIMUM_TEXT_MESSAGE_CONTENT: usize = MAXIMUM_MESSAGE_SIZE - MINIMUM_TEXT_MESSAGE_SIZE;
 
 pub const MAXIMUM_TEXT_SIZE: usize = MAXIMUM_TEXT_MESSAGE_CONTENT / 2;
 pub const MAXIMUM_NAME_SIZE: usize = MAXIMUM_TEXT_SIZE;
