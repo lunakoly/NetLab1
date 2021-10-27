@@ -36,6 +36,16 @@ impl<R> Shared<R> {
     }
 }
 
+pub trait IntoShared<T> {
+    fn shared(self) -> Shared<T>;
+}
+
+impl<T> IntoShared<T> for T {
+    fn shared(self) -> Shared<T> {
+        Shared::new(self)
+    }
+}
+
 impl<R> Clone for Shared<R> {
     fn clone(&self) -> Self {
         Shared {

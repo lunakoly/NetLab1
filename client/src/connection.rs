@@ -3,7 +3,7 @@ use std::collections::{HashMap};
 use std::fs::{File};
 
 use shared::{Result};
-use shared::shared::{Shared};
+use shared::shared::{Shared, IntoShared};
 
 use shared::communication::{
     ReadMessage,
@@ -161,31 +161,21 @@ impl ClientSession for ArsonClientSession {}
 pub fn build_connection(
     stream: TcpStream
 ) -> Result<(ArsonClientSession, ArsonClientSession)> {
-    let reading_stream = Shared::new(stream.try_clone()?);
-    let writing_stream = Shared::new(stream);
+    let reading_stream = stream.try_clone()?.shared();
+    let writing_stream = stream.shared();
 
-    let reader = Shared::new(
-        ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE)
-    );
-
-    let writer = Shared::new(
-        ArsonWriter::new(writing_stream.clone())
-    );
-
-    let sharers = Shared::new(HashMap::new());
+    let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).shared();
+    let writer = ArsonWriter::new(writing_stream.clone()).shared();
+    let sharers = HashMap::new().shared();
 
     let reader_context = ArsonClientSession::new(
-        Shared::new(
-            ClientContext::new(reading_stream, sharers.clone())
-        ),
+        ClientContext::new(reading_stream, sharers.clone()).shared(),
         reader.clone(),
         writer.clone(),
     );
 
     let writer_context = ArsonClientSession::new(
-        Shared::new(
-            ClientContext::new(writing_stream, sharers.clone())
-        ),
+        ClientContext::new(writing_stream, sharers.clone()).shared(),
         reader.clone(),
         writer.clone(),
     );

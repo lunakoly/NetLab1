@@ -7,7 +7,7 @@ use std::collections::{HashMap};
 use std::path::{Path};
 use std::fs::{File};
 
-use shared::shared::{Shared};
+use shared::shared::{IntoShared};
 use shared::communication::{DEFAULT_PORT, SendFile};
 use shared::{Result, with_error_report, ErrorKind};
 
@@ -315,7 +315,7 @@ fn setup_names_mapping() -> NamesMap {
         "Server".to_owned(),
     );
 
-    Shared::new(names)
+    names.shared()
 }
 
 fn greet_user(
@@ -356,7 +356,7 @@ fn handle_client(
     )?;
 
     let address = greet_user(&mut writing_connection)?;
-    clients.insert(address, Shared::new(writing_connection))?;
+    clients.insert(address, writing_connection.shared())?;
 
     with_error_report(|| handle_client_messages(reading_connection));
     Ok(())
@@ -364,7 +364,7 @@ fn handle_client(
 
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
-    let clients = Shared::new(HashMap::new());
+    let clients = HashMap::new().shared();
     let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {
