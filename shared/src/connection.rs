@@ -77,14 +77,7 @@ impl Connection for Context {
         file: File,
         name: &str,
     ) -> Result<()> {
-        let sharer = FileSharer {
-            name: name.to_owned(),
-            path: path.to_owned(),
-            file: file,
-            size: 0,
-            written: 0,
-        };
-
+        let sharer = FileSharer::new(name, path, file, 0, 0);
         self.sharers.insert(name.to_owned(), sharer)?;
         Ok(())
     }
@@ -101,6 +94,7 @@ impl Connection for Context {
         };
 
         sharer.size = size;
+        sharer.id = id;
 
         let key = format!("{}", id);
         self.sharers.insert(key, sharer)?;
