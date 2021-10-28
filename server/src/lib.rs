@@ -8,7 +8,7 @@ use std::path::{Path};
 use std::fs::{File};
 
 use shared::shared::{IntoShared};
-use shared::communication::{DEFAULT_PORT, SendFile};
+use shared::communication::{DEFAULT_PORT};
 use shared::{Result, with_error_report, ErrorKind};
 
 use shared::communication::{
@@ -32,6 +32,10 @@ use shared::connection::messages::{
 use shared::connection::messages::{
     MAXIMUM_TEXT_SIZE,
     MAXIMUM_NAME_SIZE,
+};
+
+use shared::connection::helpers::{
+    send_file_non_blocking,
 };
 
 fn broadcast_interupt(
@@ -205,25 +209,13 @@ fn handle_client_agree_file_download(
     connection: &mut (impl ServerSession + 'static),
     id: usize,
 ) -> Result<MessageProcessing> {
-    let file: File;
-    let size: usize;
+    let sharer = if let Some(it) = connection.remove_sharer(id)? {
+        it
+    } else {
+        return Ok(MessageProcessing::Proceed)
+    };
 
-    {
-        let sharers = connection.sharers_map()?;
-        let mut locked = sharers.write()?;
-        let key = format!("{}", id);
-
-        let sharer = if let Some(it) = locked.get_mut(&key) {
-            it
-        } else {
-            return Ok(MessageProcessing::Proceed)
-        };
-
-        file = sharer.file.try_clone()?;
-        size = sharer.size.clone();
-    }
-
-    connection.send_file_non_blocking(file, size, id)?;
+    send_file_non_blocking(connection, sharer)?;
     Ok(MessageProcessing::Proceed)
 }
 

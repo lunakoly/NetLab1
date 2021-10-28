@@ -23,9 +23,12 @@ use shared::connection::messages::{
 
 use shared::communication::{
     WriteMessage,
-    SendFile,
     explain_common_error,
     MessageProcessing,
+};
+
+use shared::connection::helpers::{
+    send_file_non_blocking,
 };
 
 use chars_reader::{IntoCharsReader, CharsReader};
@@ -67,25 +70,13 @@ fn handle_server_agree_file_upload(
     connection: &mut (impl ClientSession + 'static),
     id: usize,
 ) -> Result<MessageProcessing> {
-    let file: File;
-    let size: usize;
+    let sharer = if let Some(it) = connection.remove_sharer(id)? {
+        it
+    } else {
+        return Ok(MessageProcessing::Proceed)
+    };
 
-    {
-        let sharers = connection.sharers_map()?;
-        let mut locked = sharers.write()?;
-        let key = format!("{}", id);
-
-        let sharer = if let Some(it) = locked.get_mut(&key) {
-            it
-        } else {
-            return Ok(MessageProcessing::Proceed)
-        };
-
-        file = sharer.file.try_clone()?;
-        size = sharer.size.clone();
-    }
-
-    connection.send_file_non_blocking(file, size, id)?;
+    send_file_non_blocking(connection, sharer)?;
     Ok(MessageProcessing::Proceed)
 }
 

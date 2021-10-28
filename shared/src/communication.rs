@@ -2,8 +2,6 @@ pub mod json;
 pub mod bson;
 pub mod arson;
 
-use std::fs::{File};
-
 use crate::{Result, Error, ErrorKind};
 
 pub const DEFAULT_PORT: u32 = 6969;
@@ -14,22 +12,6 @@ pub trait ReadMessage<M> {
 
 pub trait WriteMessage<M> {
     fn write_message(&mut self, message: &M) -> Result<()>;
-}
-
-pub trait SendFile {
-    fn send_file(
-        &mut self,
-        file: &mut File,
-        size: usize,
-        id: usize
-    ) -> Result<()>;
-
-    fn send_file_non_blocking(
-        &mut self,
-        file: File,
-        size: usize,
-        id: usize
-    ) -> Result<()>;
 }
 
 pub fn explain_common_error(error: &Error) -> String {
