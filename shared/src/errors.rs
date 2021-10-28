@@ -181,3 +181,13 @@ pub fn with_error_report<F: FnOnce() -> Result<()>>(run: F) {
         _ => {}
     };
 }
+
+pub fn is_would_block_error(error: &Error) -> bool {
+    match &error.kind {
+        ErrorKind::Io { source } => match source.kind() {
+            std::io::ErrorKind::WouldBlock => true,
+            _ => false
+        }
+        _ => false
+    }
+}
