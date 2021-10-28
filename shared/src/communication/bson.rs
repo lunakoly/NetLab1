@@ -78,7 +78,7 @@ impl<W: Write> WriteMessage<Document> for BsonWriter<W> {
         // it simply stays filled with 0
         let mut buffer = vec![];
         message.to_writer(&mut buffer)?;
-        self.stream.write(&buffer)?;
+        self.stream.write_all(&buffer)?;
         self.stream.flush()?;
         Ok(())
     }
