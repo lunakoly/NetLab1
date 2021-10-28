@@ -2,6 +2,8 @@ use std::io::{Read};
 
 pub trait CappedRead: Read {
     fn clear(&mut self);
+
+    fn space_left(&self) -> usize;
 }
 
 pub struct CappedReader<R> {
@@ -49,5 +51,9 @@ impl<R: Read> Read for CappedReader<R> {
 impl<R: Read> CappedRead for CappedReader<R> {
     fn clear(&mut self) {
         self.offset = 0;
+    }
+
+    fn space_left(&self) -> usize {
+        self.capacity - self.offset
     }
 }
