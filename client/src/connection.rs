@@ -10,7 +10,7 @@ use shared::communication::{
     WriteMessage,
 };
 
-use shared::communication::arson::{ArsonReader, ArsonWriter};
+use shared::communication::arson::{ArsonScanner, ArsonWriter};
 
 use shared::connection::messages::{
     CommonMessage,
@@ -68,14 +68,14 @@ impl<T: ClientConnection> ClientConnection for Shared<T> {}
 #[derive(Clone)]
 pub struct ArsonClientSession {
     context: Shared<ClientContext>,
-    reader: Shared<ArsonReader<Shared<TcpStream>>>,
+    reader: Shared<ArsonScanner<Shared<TcpStream>>>,
     writer: Shared<ArsonWriter<Shared<TcpStream>>>,
 }
 
 impl ArsonClientSession {
     pub fn new(
         context: Shared<ClientContext>,
-        reader: Shared<ArsonReader<Shared<TcpStream>>>,
+        reader: Shared<ArsonScanner<Shared<TcpStream>>>,
         writer: Shared<ArsonWriter<Shared<TcpStream>>>,
     ) -> ArsonClientSession {
         ArsonClientSession {
@@ -173,10 +173,13 @@ impl ClientSession for ArsonClientSession {}
 pub fn build_connection(
     stream: TcpStream
 ) -> Result<(ArsonClientSession, ArsonClientSession)> {
+    stream.set_nonblocking(true)?;
+    // stream.set_nodelay(true)?;
+
     let reading_stream = stream.try_clone()?.to_shared();
     let writing_stream = stream.to_shared();
 
-    let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).to_shared();
+    let reader = ArsonScanner::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).to_shared();
     let writer = ArsonWriter::new(writing_stream.clone()).to_shared();
 
     let reading_sharers = HashMap::new().to_shared();

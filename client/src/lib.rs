@@ -4,8 +4,8 @@ mod commands;
 
 use std::fs::{File};
 use std::io::{BufRead};
-use std::iter::Peekable;
 use std::net::{TcpStream};
+use std::sync::mpsc::{channel, Sender};
 
 use connection::{
     ArsonClientSession,
@@ -13,7 +13,7 @@ use connection::{
     build_connection,
 };
 
-use shared::{Result, with_error_report};
+use shared::{Result, with_error_report, is_would_block_error};
 
 use shared::connection::messages::{
     CommonMessage,
@@ -28,10 +28,10 @@ use shared::communication::{
 };
 
 use shared::connection::helpers::{
-    send_file_non_blocking,
+    send_chunk,
 };
 
-use chars_reader::{IntoCharsReader, CharsReader};
+use chars_reader::{IntoCharsReader};
 use commands::{Command, CommandProcessing};
 
 fn handle_server_chunk(
@@ -76,7 +76,7 @@ fn handle_server_agree_file_upload(
         return Ok(MessageProcessing::Proceed)
     };
 
-    send_file_non_blocking(connection, sharer)?;
+    connection.enqueu_sending_sharer(sharer)?;
     Ok(MessageProcessing::Proceed)
 }
 
@@ -154,6 +154,10 @@ fn read_and_handle_server_message(
     let message = match connection.read_message() {
         Ok(it) => it,
         Err(error) => {
+            if is_would_block_error(&error) {
+                return Ok(MessageProcessing::Proceed)
+            }
+
             let explaination = explain_common_error(&error);
             println!("(Server) Error > {}", &explaination);
             return Ok(MessageProcessing::Stop)
@@ -161,18 +165,6 @@ fn read_and_handle_server_message(
     };
 
     handle_server_message(connection, &message)
-}
-
-fn handle_server_messages(mut connection: impl ClientSession + 'static) -> Result<()> {
-    loop {
-        let result = read_and_handle_server_message(&mut connection)?;
-
-        if let MessageProcessing::Stop = &result {
-            break
-        }
-    }
-
-    Ok(())
 }
 
 fn perform_text(
@@ -238,7 +230,7 @@ fn perform_download_file(
 }
 
 fn match_user_command_with_connection(
-    command: Command,
+    command: &Command,
     connection: &mut impl ClientSession,
 ) -> Result<CommandProcessing> {
     match command {
@@ -261,24 +253,20 @@ fn match_user_command_with_connection(
 }
 
 fn handle_user_command(
+    command: &Command,
     connection: &mut Option<impl ClientSession>,
-    reader: &mut Peekable<CharsReader>,
 ) -> Result<CommandProcessing> {
-    match commands::parse(reader) {
+    match command {
         Command::End => {
             return Ok(CommandProcessing::Stop)
         }
         Command::Connect { address } => {
             let (
-                reading_connection,
+                _,
                 writing_connection
             ) = build_connection(
                 TcpStream::connect(address)?
             )?;
-
-            std::thread::spawn(|| {
-                with_error_report(|| handle_server_messages(reading_connection))
-            });
 
             return Ok(CommandProcessing::Connect(writing_connection))
         }
@@ -296,21 +284,85 @@ fn handle_user_command(
     Ok(CommandProcessing::Proceed)
 }
 
-fn handle_user_commands() -> Result<()> {
+fn read_user_command(
+    send_command: Sender<Command>,
+) -> Result<()> {
     let stdin = std::io::stdin();
     let lock: &mut dyn BufRead = &mut stdin.lock();
     let mut reader = lock.chars().peekable();
 
+    loop {
+        let command = commands::parse(&mut reader);
+        send_command.send(command)?;
+    }
+}
+
+fn process_sending_sharers(
+    connection: &mut impl ClientSession,
+) -> Result<()> {
+    let sending_sharers = connection.sending_sharers_queue()?;
+    let mut to_be_removed = vec![];
+
+    for (index, it) in sending_sharers.write()?.iter_mut().enumerate() {
+        let result = send_chunk(connection, it);
+
+        if let Err(error) = result {
+            if !is_would_block_error(&error) {
+                return Err(error)
+            }
+            // Chill
+        } else if it.rest() == 0 {
+            to_be_removed.push(index);
+        }
+    }
+
+    let mut removed_count = 0usize;
+
+    for it in to_be_removed {
+        sending_sharers.write()?.remove(it - removed_count);
+        removed_count += 1;
+    }
+
+    Ok(())
+}
+
+fn handle_connection() -> Result<()> {
     let mut connection: Option<ArsonClientSession> = None;
 
-    loop {
-        let result = handle_user_command(&mut connection, &mut reader)?;
+    let (
+        send_command,
+        read_command,
+    ) = channel::<Command>();
 
-        if let CommandProcessing::Stop = &result {
-            break
-        } else if let CommandProcessing::Connect(it) = result {
-            connection = Some(it);
+    std::thread::spawn(|| {
+        with_error_report(|| read_user_command(send_command))
+    });
+
+    loop {
+        if let Ok(command) = read_command.try_recv() {
+            let result = handle_user_command(&command, &mut connection)?;
+
+            if let CommandProcessing::Stop = &result {
+                break
+            } else if let CommandProcessing::Connect(it) = result {
+                connection = Some(it);
+            }
         }
+
+        let the_connection = if let Some(it) = &mut connection {
+            it
+        } else {
+            continue
+        };
+
+        let result = read_and_handle_server_message(the_connection)?;
+
+        if let MessageProcessing::Stop = &result {
+            connection = None;
+            break
+        }
+
+        process_sending_sharers(the_connection)?;
     }
 
     if let Some(it) = &mut connection {
@@ -318,10 +370,6 @@ fn handle_user_commands() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn handle_connection() -> Result<()> {
-    handle_user_commands()
 }
 
 pub fn start() {

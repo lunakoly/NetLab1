@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
 use crate::{ErrorKind, Result};
-use crate::communication::bson::{BsonReader, BsonWriter};
+use crate::communication::bson::{BsonReader, BsonScanner, BsonWriter};
 
 use crate::communication::{
     ReadMessage,
@@ -23,6 +23,30 @@ impl<R: Read> ArsonReader<R> {
 }
 
 impl<R, M> ReadMessage<M> for ArsonReader<R>
+where
+    R: Read,
+    M: for<'de> serde::Deserialize<'de>,
+{
+    fn read_message(&mut self) -> Result<M> {
+        let it = self.backend.read_message()?;
+        let message: M = bson::from_bson(it.into())?;
+        Ok(message)
+    }
+}
+
+pub struct ArsonScanner<R> {
+    backend: BsonScanner<R>,
+}
+
+impl<R: Read> ArsonScanner<R> {
+    pub fn new(reader: R, cap: usize) -> ArsonScanner<R> {
+        ArsonScanner {
+            backend: BsonScanner::new(reader, cap),
+        }
+    }
+}
+
+impl<R, M> ReadMessage<M> for ArsonScanner<R>
 where
     R: Read,
     M: for<'de> serde::Deserialize<'de>,
