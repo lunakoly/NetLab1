@@ -264,10 +264,6 @@ impl Connection for ArsonServerSession {
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.context.remove_sharer(id)
     }
-
-    fn sharers_map(&mut self) -> Result<FileSharers> {
-        self.context.sharers_map()
-    }
 }
 
 impl ServerConnection for ArsonServerSession {

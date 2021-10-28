@@ -56,8 +56,6 @@ pub trait Connection {
     fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>>;
 
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>>;
-
-    fn sharers_map(&mut self) -> Result<FileSharers>;
 }
 
 impl Connection for Context {
@@ -132,10 +130,6 @@ impl Connection for Context {
         let key = format!("{}", id);
         self.sharers.remove(&key)
     }
-
-    fn sharers_map(&mut self) -> Result<FileSharers> {
-        Ok(self.sharers.clone())
-    }
 }
 
 pub trait WithConnection {
@@ -185,10 +179,6 @@ impl<W: WithConnection> Connection for W {
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.connection_mut().remove_sharer(id)
     }
-
-    fn sharers_map(&mut self) -> Result<FileSharers> {
-        self.connection_mut().sharers_map()
-    }
 }
 
 impl<T: Connection> Connection for Shared<T> {
@@ -232,9 +222,5 @@ impl<T: Connection> Connection for Shared<T> {
 
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.inner.write()?.remove_sharer(id)
-    }
-
-    fn sharers_map(&mut self) -> Result<FileSharers> {
-        self.inner.write()?.sharers_map()
     }
 }
