@@ -39,10 +39,6 @@ impl<R: Read> Read for CappedReader<R> {
             return Err(std::io::ErrorKind::InvalidData.into());
         };
 
-        if read_count == 0 {
-            return Ok(0);
-        }
-
         self.offset += read_count;
         Ok(read_count)
     }
