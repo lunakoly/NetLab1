@@ -1,4 +1,4 @@
-use std::io::{Read};
+use std::io::{Read, Seek, SeekFrom};
 
 use crate::{Result};
 use crate::errors::{with_error_report};
@@ -21,14 +21,20 @@ where
 {
     let mut buffer = [0u8; CHUNK_SIZE];
     let read = sharer.file.read(&mut buffer)?;
-    sharer.written += read;
 
     let chunk = CommonMessage::Chunk {
-        data: buffer.to_vec(),
+        data: buffer[..read].to_vec(),
         id: sharer.id,
     };
 
-    writer.write_message(&chunk)?;
+    let result = writer.write_message(&chunk);
+
+    if let Err(error) = result {
+        sharer.file.seek(SeekFrom::Start(sharer.written as u64))?;
+        return Err(error);
+    }
+
+    sharer.written += read;
 
     let time_point = Local::now();
 
