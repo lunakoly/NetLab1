@@ -14,15 +14,21 @@ use sharers::{FileSharer, FileSharers};
 
 pub struct Context {
     stream: Shared<TcpStream>,
-    sharers: FileSharers,
+    reading_sharers: FileSharers,
+    sending_sharers: Shared<Vec<FileSharer>>,
     nexd_id: usize,
 }
 
 impl Context {
-    pub fn new(stream: Shared<TcpStream>, sharers: FileSharers) -> Context {
+    pub fn new(
+        stream: Shared<TcpStream>,
+        reading_sharers: FileSharers,
+        sending_sharers: Shared<Vec<FileSharer>>,
+    ) -> Context {
         Context {
             stream: stream,
-            sharers: sharers,
+            reading_sharers: reading_sharers,
+            sending_sharers: sending_sharers,
             nexd_id: 0,
         }
     }
@@ -56,6 +62,10 @@ pub trait Connection {
     fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>>;
 
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>>;
+
+    fn enqueu_sending_sharer(&mut self, sharer: FileSharer) -> Result<()>;
+
+    fn sending_sharers_queue(&self) -> Result<Shared<Vec<FileSharer>>>;
 }
 
 impl Connection for Context {
@@ -76,7 +86,7 @@ impl Connection for Context {
         name: &str,
     ) -> Result<()> {
         let sharer = FileSharer::new(name, path, file, 0, 0);
-        self.sharers.insert(name.to_owned(), sharer)?;
+        self.reading_sharers.insert(name.to_owned(), sharer)?;
         Ok(())
     }
 
@@ -86,7 +96,7 @@ impl Connection for Context {
         size: usize,
         id: usize,
     ) -> Result<()> {
-        let mut sharer = match self.sharers.remove(name)? {
+        let mut sharer = match self.reading_sharers.remove(name)? {
             Some(it) => it,
             None => return Ok(())
         };
@@ -95,7 +105,7 @@ impl Connection for Context {
         sharer.id = id;
 
         let key = format!("{}", id);
-        self.sharers.insert(key, sharer)?;
+        self.reading_sharers.insert(key, sharer)?;
 
         Ok(())
     }
@@ -105,7 +115,7 @@ impl Connection for Context {
         data: &[u8],
         id: usize,
     ) -> Result<bool> {
-        let mut sharers = self.sharers.write()?;
+        let mut sharers = self.reading_sharers.write()?;
         let key = format!("{}", id);
 
         let sharer = if let Some(it) = sharers.get_mut(&key) {
@@ -123,12 +133,21 @@ impl Connection for Context {
     }
 
     fn remove_unpromoted_sharer(&mut self, name: &str) -> Result<Option<FileSharer>> {
-        self.sharers.remove(name)
+        self.reading_sharers.remove(name)
     }
 
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         let key = format!("{}", id);
-        self.sharers.remove(&key)
+        self.reading_sharers.remove(&key)
+    }
+
+    fn enqueu_sending_sharer(&mut self, sharer: FileSharer) -> Result<()> {
+        self.sending_sharers.write()?.push(sharer);
+        Ok(())
+    }
+
+    fn sending_sharers_queue(&self) -> Result<Shared<Vec<FileSharer>>> {
+        Ok(self.sending_sharers.clone())
     }
 }
 
@@ -179,6 +198,14 @@ impl<W: WithConnection> Connection for W {
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.connection_mut().remove_sharer(id)
     }
+
+    fn enqueu_sending_sharer(&mut self, sharer: FileSharer) -> Result<()> {
+        self.connection_mut().enqueu_sending_sharer(sharer)
+    }
+
+    fn sending_sharers_queue(&self) -> Result<Shared<Vec<FileSharer>>> {
+        self.connection().sending_sharers_queue()
+    }
 }
 
 impl<T: Connection> Connection for Shared<T> {
@@ -222,5 +249,13 @@ impl<T: Connection> Connection for Shared<T> {
 
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.inner.write()?.remove_sharer(id)
+    }
+
+    fn enqueu_sending_sharer(&mut self, sharer: FileSharer) -> Result<()> {
+        self.inner.write()?.enqueu_sending_sharer(sharer)
+    }
+
+    fn sending_sharers_queue(&self) -> Result<Shared<Vec<FileSharer>>> {
+        self.inner.write()?.sending_sharers_queue()
     }
 }

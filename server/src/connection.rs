@@ -35,12 +35,17 @@ pub struct ServerContext {
 impl ServerContext {
     pub fn new(
         stream: Shared<TcpStream>,
-        sharers: FileSharers,
+        reading_sharers: FileSharers,
+        writing_sharers: Shared<Vec<FileSharer>>,
         names: NamesMap,
         clients: Clients,
     ) -> ServerContext {
         ServerContext {
-            common: Context::new(stream, sharers),
+            common: Context::new(
+                stream,
+                reading_sharers,
+                writing_sharers
+            ),
             names: names,
             clients: clients,
         }
@@ -264,6 +269,14 @@ impl Connection for ArsonServerSession {
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.context.remove_sharer(id)
     }
+
+    fn enqueu_sending_sharer(&mut self, sharer: FileSharer) -> Result<()> {
+        self.context.enqueu_sending_sharer(sharer)
+    }
+
+    fn sending_sharers_queue(&self) -> Result<Shared<Vec<FileSharer>>> {
+        self.context.sending_sharers_queue()
+    }
 }
 
 impl ServerConnection for ArsonServerSession {
@@ -302,16 +315,30 @@ pub fn build_connection(
 
     let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).to_shared();
     let writer = ArsonWriter::new(writing_stream.clone()).to_shared();
-    let sharers = HashMap::new().to_shared();
+
+    let reading_sharers = HashMap::new().to_shared();
+    let writing_sharers = vec![].to_shared();
 
     let reader_context = ArsonServerSession::new(
-        ServerContext::new(reading_stream, sharers.clone(), names.clone(), clients.clone()).to_shared(),
+        ServerContext::new(
+            reading_stream,
+            reading_sharers.clone(),
+            writing_sharers.clone(),
+            names.clone(),
+            clients.clone()
+        ).to_shared(),
         reader.clone(),
         writer.clone(),
     );
 
     let writer_context = ArsonServerSession::new(
-        ServerContext::new(writing_stream, sharers.clone(), names, clients).to_shared(),
+        ServerContext::new(
+            writing_stream,
+            reading_sharers.clone(),
+            writing_sharers.clone(),
+            names,
+            clients
+        ).to_shared(),
         reader.clone(),
         writer.clone(),
     );

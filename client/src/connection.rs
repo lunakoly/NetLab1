@@ -27,9 +27,17 @@ pub struct ClientContext {
 }
 
 impl ClientContext {
-    pub fn new(stream: Shared<TcpStream>, sharers: FileSharers) -> ClientContext {
+    pub fn new(
+        stream: Shared<TcpStream>,
+        reading_sharers: FileSharers,
+        writing_sharers: Shared<Vec<FileSharer>>,
+    ) -> ClientContext {
         ClientContext {
-            common: Context::new(stream, sharers),
+            common: Context::new(
+                stream,
+                reading_sharers,
+                writing_sharers
+            ),
         }
     }
 }
@@ -142,6 +150,14 @@ impl Connection for ArsonClientSession {
     fn remove_sharer(&mut self, id: usize) -> Result<Option<FileSharer>> {
         self.context.remove_sharer(id)
     }
+
+    fn enqueu_sending_sharer(&mut self, sharer: FileSharer) -> Result<()> {
+        self.context.enqueu_sending_sharer(sharer)
+    }
+
+    fn sending_sharers_queue(&self) -> Result<Shared<Vec<FileSharer>>> {
+        self.context.sending_sharers_queue()
+    }
 }
 
 impl ClientConnection for ArsonClientSession {}
@@ -162,16 +178,26 @@ pub fn build_connection(
 
     let reader = ArsonReader::new(reading_stream.clone(), MAXIMUM_MESSAGE_SIZE).to_shared();
     let writer = ArsonWriter::new(writing_stream.clone()).to_shared();
-    let sharers = HashMap::new().to_shared();
+
+    let reading_sharers = HashMap::new().to_shared();
+    let writing_sharers = vec![].to_shared();
 
     let reader_context = ArsonClientSession::new(
-        ClientContext::new(reading_stream, sharers.clone()).to_shared(),
+        ClientContext::new(
+            reading_stream,
+            reading_sharers.clone(),
+            writing_sharers.clone(),
+        ).to_shared(),
         reader.clone(),
         writer.clone(),
     );
 
     let writer_context = ArsonClientSession::new(
-        ClientContext::new(writing_stream, sharers.clone()).to_shared(),
+        ClientContext::new(
+            writing_stream,
+            reading_sharers.clone(),
+            writing_sharers.clone(),
+        ).to_shared(),
         reader.clone(),
         writer.clone(),
     );
