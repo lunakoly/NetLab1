@@ -144,7 +144,7 @@ fn parse_command<'a>(input: &mut Peekable<CharsReader<'a>>) -> Command {
         Command::Nothing
     } else if words[0] == "/q" || words[0] == "/quit" || words[0] == "/exit" {
         Command::End
-    } else if words[0] == "/rename" {
+    } else if words[0] == "/rename" || words[0] == "/r" {
         parse_rename(&words)
     } else if words[0] == "/connect" || words[0] == "/c" {
         parse_connect(&words)
