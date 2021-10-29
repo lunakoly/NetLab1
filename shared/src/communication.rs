@@ -30,5 +30,6 @@ pub fn explain_common_error(error: &Error) -> String {
 
 pub enum MessageProcessing {
     Proceed,
+    ProceedButWaiting,
     Stop,
 }

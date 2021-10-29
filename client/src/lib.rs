@@ -5,6 +5,7 @@ mod commands;
 use std::fs::{File};
 use std::io::{BufRead};
 use std::net::{TcpStream};
+use std::time::{Duration};
 use std::sync::mpsc::{channel, Sender};
 
 use connection::{
@@ -155,7 +156,7 @@ fn read_and_handle_server_message(
         Ok(it) => it,
         Err(error) => {
             if is_would_block_error(&error) {
-                return Ok(MessageProcessing::Proceed)
+                return Ok(MessageProcessing::ProceedButWaiting)
             }
 
             let explaination = explain_common_error(&error);
@@ -299,8 +300,13 @@ fn read_user_command(
 
 fn process_sending_sharers(
     connection: &mut impl ClientSession,
-) -> Result<()> {
+) -> Result<bool> {
     let sending_sharers = connection.sending_sharers_queue()?;
+
+    if sending_sharers.read()?.len() == 0 {
+        return Ok(false)
+    }
+
     let mut to_be_removed = vec![];
 
     for (index, it) in sending_sharers.write()?.iter_mut().enumerate() {
@@ -323,8 +329,10 @@ fn process_sending_sharers(
         removed_count += 1;
     }
 
-    Ok(())
+    Ok(true)
 }
+
+const WAITING_DELAY_MILLIS: u64 = 16;
 
 fn handle_connection() -> Result<()> {
     let mut connection: Option<ArsonClientSession> = None;
@@ -339,7 +347,10 @@ fn handle_connection() -> Result<()> {
     });
 
     loop {
+        let mut did_something = false;
+
         if let Ok(command) = read_command.try_recv() {
+            did_something = true;
             let result = handle_user_command(&command, &mut connection)?;
 
             if let CommandProcessing::Stop = &result {
@@ -349,20 +360,21 @@ fn handle_connection() -> Result<()> {
             }
         }
 
-        let the_connection = if let Some(it) = &mut connection {
-            it
-        } else {
-            continue
-        };
+        if let Some(the_connection) = &mut connection {
+            let result = read_and_handle_server_message(the_connection)?;
 
-        let result = read_and_handle_server_message(the_connection)?;
+            if let MessageProcessing::Stop = &result {
+                connection = None;
+                break
+            }
 
-        if let MessageProcessing::Stop = &result {
-            connection = None;
-            break
+            did_something |= !matches!(&result, MessageProcessing::ProceedButWaiting);
+            did_something |= process_sending_sharers(the_connection)?;
         }
 
-        process_sending_sharers(the_connection)?;
+        if !did_something {
+            std::thread::sleep(Duration::from_millis(WAITING_DELAY_MILLIS));
+        }
     }
 
     if let Some(it) = &mut connection {

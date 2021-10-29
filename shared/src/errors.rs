@@ -10,6 +10,7 @@ pub enum ErrorKind {
     MalformedMessage { message: String },
     PoisonedLock { message: String },
     SendError { message: String },
+    SystemTime { source: std::time::SystemTimeError },
 }
 
 impl std::fmt::Display for ErrorKind {
@@ -44,6 +45,9 @@ impl std::fmt::Display for ErrorKind {
             }
             ErrorKind::SendError { message } => {
                 write!(formatter, "Channel sending > {}", message)
+            }
+            ErrorKind::SystemTime { source } => {
+                write!(formatter, "System time > {}", source)
             }
         }
     }
@@ -178,6 +182,16 @@ impl<T> From<std::sync::mpsc::SendError<T>> for Error {
         Error {
             kind: ErrorKind::SendError {
                 message: format!("{}", source)
+            }
+        }
+    }
+}
+
+impl From<std::time::SystemTimeError> for Error {
+    fn from(source: std::time::SystemTimeError) -> Self {
+        Error {
+            kind: ErrorKind::SystemTime {
+                source: source,
             }
         }
     }
