@@ -32,6 +32,7 @@ use shared::connection::messages::{
 use shared::connection::messages::{
     MAXIMUM_TEXT_SIZE,
     MAXIMUM_NAME_SIZE,
+    MAXIMUM_FILE_NAME_SIZE,
 };
 
 use shared::connection::helpers::{
@@ -51,6 +52,19 @@ fn broadcast_interupt(
 
     connection.broadcast(&response)?;
     Ok(MessageProcessing::Stop)
+}
+
+fn handle_upper_bound_violation(
+    connection: &mut impl ServerSession,
+    bounded_field_name: &str,
+) -> Result<MessageProcessing> {
+    let time = chrono::Utc::now();
+    let name = connection.name()?;
+
+    println!("<{}> Error > {} tried to sabotage the party by violating the {} size bound. Terminated.", &time, &name, bounded_field_name);
+
+    connection.remove_from_clients()?;
+    return broadcast_interupt(connection);
 }
 
 fn handle_client_chunk(
@@ -97,9 +111,7 @@ fn handle_client_text(
     let name = connection.name()?;
 
     if text.len() > MAXIMUM_TEXT_SIZE {
-        connection.remove_from_clients()?;
-        println!("<{}> Error > {} tried to sabotage the party by violating the text size bound. Terminated.", &time, &name);
-        return broadcast_interupt(connection);
+        return handle_upper_bound_violation(connection, "text");
     }
 
     println!("<{}> Message > {} > {}", &time, &name, text);
@@ -136,13 +148,8 @@ fn handle_client_rename(
     connection: &mut (impl ServerSession + 'static),
     new_name: &str,
 ) -> Result<MessageProcessing> {
-    let time = chrono::Utc::now();
-    let name = connection.name()?;
-
     if new_name.len() > MAXIMUM_NAME_SIZE {
-        connection.remove_from_clients()?;
-        println!("<{}> Error > {} tried to sabotage the party by violating the name size bound. Terminated.", &time, &name);
-        return broadcast_interupt(connection);
+        return handle_upper_bound_violation(connection, "name");
     }
 
     if let Some(it) = connection.rename(new_name)? {
@@ -158,6 +165,10 @@ fn handle_client_request_file_upload(
     size: usize,
     id: usize,
 ) -> Result<MessageProcessing> {
+    if name.len() > MAXIMUM_FILE_NAME_SIZE {
+        return handle_upper_bound_violation(connection, "file name");
+    }
+
     let response = if Path::new(name).exists() {
         ServerMessage::DeclineFileUpload {
             id: id,
@@ -180,6 +191,10 @@ fn handle_client_request_file_download(
     connection: &mut (impl ServerSession + 'static),
     name: &str,
 ) -> Result<MessageProcessing> {
+    if name.len() > MAXIMUM_FILE_NAME_SIZE {
+        return handle_upper_bound_violation(connection, "file name");
+    }
+
     let response = if !Path::new(name).exists() {
         ServerMessage::DeclineFileDownload {
             name: name.to_owned(),

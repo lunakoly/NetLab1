@@ -70,6 +70,10 @@ The protocol assumes communication via _messages_: short pieces of data with pre
 A single message cannot exceed some fixed number of bytes in size (currently `MAXIMUM_MESSAGE_SIZE = 1024`).
 If a receiver can't parse a message within this amount of bytes, the connection must be dropped.
 
+Since there is an upper limit for the message size, there're also the upper limits for such things as a user name, a textual message, etc. (currently, `MAXIMUM_NAME_SIZE = MAXIMUM_TEXT_SIZE = 486`, `MAXIMUM_FILE_NAME_SIZE = 479`). 
+
+If the server receives a message containing a field with the size exceeding the corresponding upper limit, it must disconnect the client who sent it.
+
 There're multiple message formats in use.
 Each one corresponds to some high-level situation (since we design the protocol for a single use case - a chat - it's aware of the context). In general, they are side-specific.
 

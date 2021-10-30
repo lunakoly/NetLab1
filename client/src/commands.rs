@@ -6,7 +6,7 @@ use crate::chars_reader::{CharsReader};
 use super::{ArsonClientSession};
 
 use shared::communication::{DEFAULT_PORT};
-use shared::connection::messages::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE};
+use shared::connection::messages::{MAXIMUM_TEXT_SIZE, MAXIMUM_NAME_SIZE, MAXIMUM_FILE_NAME_SIZE};
 
 pub enum Command {
     Nothing,
@@ -69,6 +69,11 @@ fn check_upload(path: String, name: String) -> Command {
         return Command::Nothing;
     }
 
+    if name.len() > MAXIMUM_FILE_NAME_SIZE {
+        println!("(Console) No, this file name is way too long");
+        return Command::Nothing;
+    }
+
     Command::UploadFile { path, name }
 }
 
@@ -92,6 +97,11 @@ fn parse_upload(words: &[String]) -> Command {
 fn check_download(path: String, name: String) -> Command {
     if Path::new(&path).exists() {
         println!("(Console) No, wait, the file already exists!");
+        return Command::Nothing;
+    }
+
+    if name.len() > MAXIMUM_FILE_NAME_SIZE {
+        println!("(Console) No, this file name is way too long");
         return Command::Nothing;
     }
 
