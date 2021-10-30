@@ -16,12 +16,11 @@ The chat works as a room that random clients may connect to, and implements:
 cargo build
 ```
 
-Configure the `target` folders with either `configure.bat` or `./configure.sh`.
-
 ## Run
 
 ```bash
-cargo run
+cargo run -p server
+cargo run -p client
 ```
 
 The server can be stopped via `Ctrl-C`.
