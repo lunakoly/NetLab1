@@ -357,7 +357,7 @@ fn handle_client(
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
     let clients = HashMap::new().to_shared();
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", DEFAULT_PORT))?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", DEFAULT_PORT))?;
 
     for incomming in listener.incoming() {
         let the_names = names.clone();
