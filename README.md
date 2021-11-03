@@ -226,8 +226,7 @@ The end of the file transfer is handled by the receiver by the check that the nu
 
 ### Blocking vs Non-Blocking
 
-Currently, the server works with the sockets in a blocking way, and the client works with them in a non-blocking manner.
-There's no deep reasoning to it, it's just a way to illustrate that both approaches are possible.
+Currently, both the server and the client work in the non-blocking manner.
 
 The problem of time wasted during iterations in the non-blocking approach is solved by checking whether there was some work to do during the previous iteration.
 This allows to save processor time for slow communication, but still utilize maximum performance when put under pressure.

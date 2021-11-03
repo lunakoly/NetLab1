@@ -1,15 +1,14 @@
 mod connection;
 
-use std::thread;
-
 use std::net::{TcpListener, TcpStream};
 use std::collections::{HashMap};
+use std::time::{Duration};
 use std::path::{Path};
 use std::fs::{File};
 
-use shared::shared::{IntoShared};
+use shared::shared::{IntoShared, Shared};
 use shared::communication::{DEFAULT_PORT};
-use shared::{Result, with_error_report, ErrorKind};
+use shared::{Result, with_error_report, ErrorKind, is_would_block_error};
 
 use shared::communication::{
     explain_common_error,
@@ -17,6 +16,7 @@ use shared::communication::{
 };
 
 use connection::{
+    ArsonServerSession,
     ServerSession,
     NamesMap,
     Clients,
@@ -37,7 +37,7 @@ use shared::connection::messages::{
 };
 
 use shared::connection::helpers::{
-    send_file_non_blocking,
+    process_sending_sharers,
 };
 
 fn broadcast_interupt(
@@ -238,7 +238,7 @@ fn handle_client_agree_file_download(
         return Ok(MessageProcessing::Proceed)
     };
 
-    send_file_non_blocking(connection, sharer)?;
+    connection.enqueu_sending_sharer(sharer)?;
     Ok(MessageProcessing::Proceed)
 }
 
@@ -293,6 +293,10 @@ fn read_and_handle_client_message(
     let message = match connection.read_message() {
         Ok(it) => it,
         Err(error) => {
+            if is_would_block_error(&error) {
+                return Ok(MessageProcessing::ProceedButWaiting)
+            }
+
             let explaination = explain_common_error(&error);
             println!("<{}> Error > {} > {}", &time, &name, &explaination);
 
@@ -305,21 +309,6 @@ fn read_and_handle_client_message(
     };
 
     handle_client_message(connection, &message)
-}
-
-fn handle_client_messages(
-    mut connection: impl ServerSession + 'static
-) -> Result<()> {
-    loop {
-        let result = read_and_handle_client_message(&mut connection)?;
-
-        if let MessageProcessing::Stop = &result {
-            connection.remove_from_clients()?;
-            break
-        }
-    }
-
-    Ok(())
 }
 
 fn setup_names_mapping() -> NamesMap {
@@ -360,35 +349,88 @@ fn handle_client(
     stream: TcpStream,
     names: NamesMap,
     clients: Clients,
+    connections: &mut Vec<Shared<ArsonServerSession>>,
 ) -> Result<()> {
     let (
-        reading_connection,
-        mut writing_connection
+        mut reading_connection,
+        _
     ) = build_connection(
         stream,
         names,
         clients.clone(),
     )?;
 
-    let address = greet_user(&mut writing_connection)?;
-    clients.insert(address, writing_connection.to_shared())?;
+    let address = greet_user(&mut reading_connection)?;
+    let shared = reading_connection.to_shared();
 
-    with_error_report(|| handle_client_messages(reading_connection));
+    clients.insert(address, shared.clone())?;
+    connections.push(shared);
+
     Ok(())
 }
+
+fn process_connections(
+    connections: &mut Vec<Shared<ArsonServerSession>>,
+) -> Result<bool> {
+    if connections.len() == 0 {
+        return Ok(false)
+    }
+
+    let mut to_be_removed = vec![];
+    let mut did_something = false;
+
+    for (index, it) in connections.iter_mut().enumerate() {
+        let result = read_and_handle_client_message(it)?;
+
+        if let MessageProcessing::Stop = &result {
+            to_be_removed.push(index);
+            break
+        }
+
+        did_something |= !matches!(&result, MessageProcessing::ProceedButWaiting);
+        did_something |= process_sending_sharers(it)?;
+    }
+
+    let mut removed_count = 0usize;
+
+    for it in to_be_removed {
+        connections.remove(it - removed_count);
+        removed_count += 1;
+    }
+
+    Ok(did_something)
+}
+
+const WAITING_DELAY_MILLIS: u64 = 16;
 
 fn handle_connection() -> Result<()> {
     let names = setup_names_mapping();
     let clients = HashMap::new().to_shared();
+
     let listener = TcpListener::bind(format!("0.0.0.0:{}", DEFAULT_PORT))?;
+    listener.set_nonblocking(true)?;
+
+    let mut connections = vec![];
 
     for incomming in listener.incoming() {
-        let the_names = names.clone();
-        let the_clients = clients.clone();
+        let mut did_something = false;
 
-        thread::spawn(|| {
-            with_error_report(|| handle_client(incomming?, the_names, the_clients))
-        });
+        match incomming {
+            Ok(it) => {
+                handle_client(it, names.clone(), clients.clone(), &mut connections)?;
+            }
+            Err(error) => {
+                if !matches!(error.kind(), std::io::ErrorKind::WouldBlock) {
+                    return Err(error.into())
+                }
+            }
+        }
+
+        did_something |= process_connections(&mut connections)?;
+
+        if !did_something {
+            std::thread::sleep(Duration::from_millis(WAITING_DELAY_MILLIS));
+        }
     }
 
     Ok(())
