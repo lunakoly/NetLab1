@@ -29,7 +29,7 @@ use shared::communication::{
 };
 
 use shared::connection::helpers::{
-    send_chunk,
+    process_sending_sharers,
 };
 
 use chars_reader::{IntoCharsReader};
@@ -296,40 +296,6 @@ fn read_user_command(
         let command = commands::parse(&mut reader);
         send_command.send(command)?;
     }
-}
-
-fn process_sending_sharers(
-    connection: &mut impl ClientSession,
-) -> Result<bool> {
-    let sending_sharers = connection.sending_sharers_queue()?;
-
-    if sending_sharers.read()?.len() == 0 {
-        return Ok(false)
-    }
-
-    let mut to_be_removed = vec![];
-
-    for (index, it) in sending_sharers.write()?.iter_mut().enumerate() {
-        let result = send_chunk(connection, it);
-
-        if let Err(error) = result {
-            if !is_would_block_error(&error) {
-                return Err(error)
-            }
-            // Chill
-        } else if it.rest() == 0 {
-            to_be_removed.push(index);
-        }
-    }
-
-    let mut removed_count = 0usize;
-
-    for it in to_be_removed {
-        sending_sharers.write()?.remove(it - removed_count);
-        removed_count += 1;
-    }
-
-    Ok(true)
 }
 
 const WAITING_DELAY_MILLIS: u64 = 16;

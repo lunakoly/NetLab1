@@ -1,6 +1,6 @@
 use std::io::{Read, Seek, SeekFrom};
 
-use crate::{Result};
+use crate::{Result, is_would_block_error};
 use crate::errors::{with_error_report};
 
 use crate::communication::{
@@ -9,6 +9,7 @@ use crate::communication::{
 
 use super::messages::{CommonMessage, CHUNK_SIZE};
 use super::sharers::{FileSharer};
+use super::{Connection};
 
 use chrono::{Local};
 
@@ -76,4 +77,41 @@ where
     });
 
     Ok(())
+}
+
+pub fn process_sending_sharers<C>(
+    connection: &mut C,
+) -> Result<bool>
+where
+    C: Connection + WriteMessage<CommonMessage>,
+{
+    let sending_sharers = connection.sending_sharers_queue()?;
+
+    if sending_sharers.read()?.len() == 0 {
+        return Ok(false)
+    }
+
+    let mut to_be_removed = vec![];
+
+    for (index, it) in sending_sharers.write()?.iter_mut().enumerate() {
+        let result = send_chunk(connection, it);
+
+        if let Err(error) = result {
+            if !is_would_block_error(&error) {
+                return Err(error)
+            }
+            // Chill
+        } else if it.rest() == 0 {
+            to_be_removed.push(index);
+        }
+    }
+
+    let mut removed_count = 0usize;
+
+    for it in to_be_removed {
+        sending_sharers.write()?.remove(it - removed_count);
+        removed_count += 1;
+    }
+
+    Ok(true)
 }
