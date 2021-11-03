@@ -305,6 +305,8 @@ pub trait ServerSession: ServerConnection
 
 impl ServerSession for ArsonServerSession {}
 
+impl<T: ServerSession> ServerSession for Shared<T> {}
+
 pub fn build_connection(
     stream: TcpStream,
     names: NamesMap,

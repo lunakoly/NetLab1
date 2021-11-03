@@ -170,6 +170,8 @@ pub trait ClientSession: ClientConnection
 
 impl ClientSession for ArsonClientSession {}
 
+impl<T: ClientSession> ClientSession for Shared<T> {}
+
 pub fn build_connection(
     stream: TcpStream
 ) -> Result<(ArsonClientSession, ArsonClientSession)> {
