@@ -62,10 +62,25 @@ impl WithConnection for ServerContext {
     }
 }
 
+pub fn broadcast(clients: Clients, message: &ServerMessage) -> Result<()> {
+    for (_, connection) in clients.write()?.iter_mut() {
+        connection.write_message(message)?;
+    }
+
+    Ok(())
+}
+
+pub enum RenameResult {
+    Success { old_name: String, new_name: String },
+    Failure { reason: String },
+}
+
 pub trait ServerConnection: Connection {
     fn name(&self) -> Result<String>;
+    fn names(&self) -> Result<NamesMap>;
+    fn clients(&self) -> Result<Clients>;
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()>;
-    fn rename(&mut self, new_name: &str) -> Result<Option<ServerMessage>>;
+    fn rename(&mut self, new_name: &str) -> Result<RenameResult>;
     fn remove_from_clients(&mut self) -> Result<()>;
 }
 
@@ -82,34 +97,36 @@ impl ServerConnection for ServerContext {
         Ok(proper)
     }
 
-    fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
-        let mut the_clients = self.clients.write()?;
-
-        for (_, connection) in the_clients.iter_mut() {
-            connection.write_message(message)?;
-        }
-
-        Ok(())
+    fn names(&self) -> Result<NamesMap> {
+        Ok(self.names.clone())
     }
 
-    fn rename(&mut self, new_name: &str) -> Result<Option<ServerMessage>> {
+    fn clients(&self) -> Result<Clients> {
+        Ok(self.clients.clone())
+    }
+
+    fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
+        broadcast(self.clients()?, message)
+    }
+
+    fn rename(&mut self, new_name: &str) -> Result<RenameResult> {
         if new_name.contains('.') || new_name.contains(':') {
-            let message = ServerMessage::Support {
-                text: "Your name can't contain '.'s or ':'s".to_owned()
+            let message = RenameResult::Failure {
+                reason: "Your name can't contain '.'s or ':'s".to_owned()
             };
 
-            return Ok(Some(message))
+            return Ok(message)
         }
 
         let cloned_names = self.names.clone();
         let mut the_names = cloned_names.write()?;
 
         if the_names.values().any(|it| it == &new_name) {
-            let message = ServerMessage::Support {
-                text: "This name has already been taken, choose another one".to_owned()
+            let message = RenameResult::Failure {
+                reason: "This name has already been taken, choose another one".to_owned()
             };
 
-            return Ok(Some(message))
+            return Ok(message)
         }
 
         let address = self.remote_address()?.to_string();
@@ -122,20 +139,17 @@ impl ServerConnection for ServerContext {
 
         the_names.insert(address.clone(), new_name.to_owned());
 
-        let response = ServerMessage::UserRenamed {
+        let response = RenameResult::Success {
             old_name: old_name,
             new_name: new_name.to_owned(),
         };
 
-        self.broadcast(&response)?;
-        Ok(None)
+        Ok(response)
     }
 
     fn remove_from_clients(&mut self) -> Result<()> {
         let address = self.remote_address()?.to_string();
 
-        // In fact, the corresponding
-        // writer must always be present.
         self.clients.remove(&address)?;
         self.names.remove(&address)?;
 
@@ -153,11 +167,19 @@ impl<W: WithServerConnection> ServerConnection for W {
         self.server_connection().name()
     }
 
+    fn names(&self) -> Result<NamesMap> {
+        self.server_connection().names()
+    }
+
+    fn clients(&self) -> Result<Clients> {
+        self.server_connection().clients()
+    }
+
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
         self.server_connection_mut().broadcast(message)
     }
 
-    fn rename(&mut self, new_name: &str) -> Result<Option<ServerMessage>> {
+    fn rename(&mut self, new_name: &str) -> Result<RenameResult> {
         self.server_connection_mut().rename(new_name)
     }
 
@@ -171,16 +193,32 @@ impl<T: ServerConnection> ServerConnection for Shared<T> {
         self.inner.read()?.name()
     }
 
-    fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
-        self.inner.write()?.broadcast(message)
+    fn names(&self) -> Result<NamesMap> {
+        self.inner.read()?.names()
     }
 
-    fn rename(&mut self, new_name: &str) -> Result<Option<ServerMessage>> {
+    fn clients(&self) -> Result<Clients> {
+        self.inner.read()?.clients()
+    }
+
+    fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
+        // Prevents the deadlock:
+        // self.inner is no longer
+        // locked after taking the
+        // clients.
+        broadcast(self.clients()?, message)
+    }
+
+    fn rename(&mut self, new_name: &str) -> Result<RenameResult> {
         self.inner.write()?.rename(new_name)
     }
 
     fn remove_from_clients(&mut self) -> Result<()> {
-        self.inner.write()?.remove_from_clients()
+        // Prevents the deadlock
+        let address = self.remote_address()?.to_string();
+        self.clients()?.remove(&address)?;
+        self.names()?.remove(&address)?;
+        Ok(())
     }
 }
 
@@ -284,11 +322,19 @@ impl ServerConnection for ArsonServerSession {
         self.context.name()
     }
 
+    fn names(&self) -> Result<NamesMap> {
+        self.context.names()
+    }
+
+    fn clients(&self) -> Result<Clients> {
+        self.context.clients()
+    }
+
     fn broadcast(&mut self, message: &ServerMessage) -> Result<()> {
         self.context.broadcast(message)
     }
 
-    fn rename(&mut self, new_name: &str) -> Result<Option<ServerMessage>> {
+    fn rename(&mut self, new_name: &str) -> Result<RenameResult> {
         self.context.rename(new_name)
     }
 

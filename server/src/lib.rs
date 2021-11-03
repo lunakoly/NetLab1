@@ -21,6 +21,7 @@ use connection::{
     NamesMap,
     Clients,
     build_connection,
+    RenameResult,
 };
 
 use shared::connection::messages::{
@@ -152,9 +153,16 @@ fn handle_client_rename(
         return handle_upper_bound_violation(connection, "name");
     }
 
-    if let Some(it) = connection.rename(new_name)? {
-        connection.write_message(&it)?;
-    };
+    match connection.rename(new_name)? {
+        RenameResult::Success { old_name, new_name } => {
+            let message = ServerMessage::UserRenamed { old_name, new_name };
+            connection.write_message(&message)?;
+        }
+        RenameResult::Failure { reason } => {
+            let message = ServerMessage::Support { text: reason };
+            connection.write_message(&message)?;
+        }
+    }
 
     Ok(MessageProcessing::Proceed)
 }
