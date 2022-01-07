@@ -1,4 +1,4 @@
-# Rust TCP-Chat Example
+# Home Assignment #1
 ## About
 
 This is a simple TCP-chat in Rust (a university home assignment).
